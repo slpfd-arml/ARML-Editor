@@ -1,0 +1,10 @@
+{
+  "github": {
+    "enabled": true,
+    "owner": "slpfd-arml",
+    "repo": "ARML",
+    "branch": "main",
+    "apiHost": "api.github.com",
+    "token": "TOKEN_GOES_HERE"
+  }
+}

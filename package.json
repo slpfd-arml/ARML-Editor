@@ -1,0 +1,14 @@
+{
+  "name": "arml-add-resource-tool",
+  "version": "1.2.0",
+  "description": "Local offline admin form for adding resources to the ARML workbook.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "xlsx": "^0.18.5"
+  }
+}

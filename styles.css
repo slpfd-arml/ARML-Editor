@@ -1,0 +1,563 @@
+:root {
+  --bg: #0b0c10;
+  --bg-alt: #14151b;
+  --card: #1b1d24;
+  /* Matches ARML's own --slp-red exactly, rather than an unrelated
+     generic red - this is the whole point of the branding pass: the two
+     apps should read as part of the same system at a glance. */
+  --accent: #961200;
+  --accent-soft: #F0997B;
+  --text: #f7fafc;
+  --text-muted: #a0aec0;
+  --border: #2d3748;
+  --radius: 8px;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+/* Branded header - same visual language as ARML's own app-header: the
+   SLP patch, red background, white title text. Deliberately not a pixel-
+   perfect clone beyond that - this tool can look a little rougher
+   overall, but should be unmistakably "the same system" at first glance. */
+.app-header {
+  display: flex;
+  align-items: center;
+  background-color: var(--accent);
+  color: white;
+  padding: 0.6rem 1.25rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.35);
+}
+
+.app-header .patch {
+  height: 56px;
+  margin-right: 1rem;
+  flex-shrink: 0;
+}
+
+.app-header .title-block h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: white;
+}
+
+.app-header .title-block p {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.9;
+  color: white;
+}
+
+.app-header .title-block .hint {
+  opacity: 0.75;
+  font-size: 0.78rem;
+  color: white;
+}
+
+.container {
+  max-width: 900px;
+  margin: 20px auto;
+  padding: 20px;
+}
+
+.section {
+  background: var(--card);
+  padding: 16px;
+  margin-bottom: 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.section h2 {
+  margin-top: 0;
+  color: var(--accent-soft);
+}
+
+label {
+  display: block;
+  margin-bottom: 12px;
+}
+
+input, textarea, select {
+  width: 100%;
+  padding: 8px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+
+textarea {
+  min-height: 60px;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  padding: 10px 16px;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.btn-primary:hover {
+  background: #e53e3e;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.preview {
+  background: #111827;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  margin-top: 20px;
+  white-space: pre-wrap;
+}
+
+.hint {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: normal;
+  margin-top: 2px;
+}
+
+.required {
+  color: var(--accent-soft);
+}
+
+/* TAG-CHIP INPUTS */
+.tag-input {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent);
+  color: white;
+  padding: 3px 6px 3px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.tag-remove {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.tag-entry {
+  flex: 1;
+  min-width: 140px;
+  border: none;
+  background: none;
+  padding: 4px;
+  color: var(--text);
+}
+
+.tag-entry:focus {
+  outline: none;
+}
+
+/* FILE ROWS */
+#fileInput {
+  margin-bottom: 10px;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.file-name {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-label {
+  flex: 1;
+  width: auto;
+}
+
+.file-remove {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.file-remove:hover {
+  color: var(--accent-soft);
+  border-color: var(--accent-soft);
+}
+
+/* SAVE PROGRESS
+   Indeterminate on purpose - see the comment in index.html next to
+   #saveProgress. A sliding bar in a fixed-width track, same idea as a
+   browser's own "still loading" indicator. */
+.save-progress {
+  margin-top: 12px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.save-progress-bar {
+  height: 100%;
+  width: 40%;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  animation: save-progress-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes save-progress-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+.save-progress-label {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--accent-soft);
+}
+
+/* STATUS MESSAGE */
+.status-box {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+}
+
+.status-box.success {
+  background: rgba(72, 187, 120, 0.15);
+  border: 1px solid #48bb78;
+  color: #9ae6b4;
+}
+
+.status-box.error {
+  background: rgba(245, 101, 101, 0.15);
+  border: 1px solid var(--accent-soft);
+  color: #feb2b2;
+}
+
+.status-box.warning {
+  background: rgba(236, 201, 75, 0.15);
+  border: 1px solid #ecc94b;
+  color: #faf089;
+}
+/* PUBLISH DETAIL */
+.publish-detail {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+
+.publish-detail ul {
+  margin: 6px 0 10px;
+  padding-left: 4px;
+  list-style: none;
+}
+
+.publish-detail li {
+  padding: 2px 0;
+}
+
+.publish-ok {
+  color: #9ae6b4;
+}
+
+.publish-fail {
+  color: #feb2b2;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.85rem;
+  margin-right: 8px;
+  margin-top: 4px;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent-soft);
+  color: var(--accent-soft);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   MODE TABS
+   ============================================================ */
+.mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.mode-tab {
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.mode-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+/* ============================================================
+   EDIT/DELETE PICKER
+   ============================================================ */
+.edit-results-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.edit-results-list li {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.edit-results-list li:last-child {
+  border-bottom: none;
+}
+
+.edit-results-list li:hover {
+  background: var(--bg-alt);
+}
+
+.edit-results-list li .result-category {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.edit-results-empty {
+  padding: 14px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* ============================================================
+   EXISTING FILES (edit mode)
+   ============================================================ */
+.existing-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.existing-file-row .file-name {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.existing-file-row .file-remove {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.existing-file-row .file-remove:hover {
+  color: var(--accent-soft);
+  border-color: var(--accent-soft);
+}
+
+.existing-file-row.removed {
+  opacity: 0.4;
+}
+
+.existing-file-row.removed .file-name {
+  text-decoration: line-through;
+}
+
+/* ============================================================
+   DELETE
+   ============================================================ */
+.btn-danger {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 16px;
+  background: transparent;
+  border: 1px solid #e53e3e;
+  color: #feb2b2;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.btn-danger:hover {
+  background: rgba(229, 62, 62, 0.12);
+}
+
+.btn-danger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Solid, not outlined - and a distinct shade from --accent (the app's
+   branded maroon, used for ordinary Save buttons everywhere else). Using
+   the SAME red for delete as for "just save this form" would defeat the
+   point of making it stand out - this needs to read as categorically
+   different and more alarming, not just "another red button" in an app
+   that's already mostly red. The safety gate stays exactly as it was -
+   this only changes how easy the button is to spot, not how easy it is
+   to accidentally trigger (still requires typing the exact resource name
+   in the modal that follows). */
+.btn-delete {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 16px;
+  background: #dc2626;
+  border: 1px solid #dc2626;
+  color: white;
+  font-weight: 600;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.btn-delete:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.btn-delete:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  max-width: 420px;
+  width: 90%;
+}
+
+.modal-box h3 {
+  margin-top: 0;
+  color: var(--accent-soft);
+}
+
+.modal-box input {
+  margin-top: 10px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.modal-actions button {
+  flex: 1;
+}
+
+/* Three buttons in the same row need tighter text than the standard
+   two-button Cancel/Confirm pattern, or "Edit Existing" and "Proceed
+   Anyway" wrap awkwardly on a narrow screen. */
+.modal-actions-triple button {
+  font-size: 0.85rem;
+  padding: 10px 8px;
+}
+
+#editBackRow {
+  margin-bottom: 14px;
+}
+
+#editBackRow[hidden] {
+  display: none;
+}
