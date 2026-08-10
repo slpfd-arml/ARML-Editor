@@ -5,6 +5,8 @@
   <title>ARML Editor</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#961200" />
   <link rel="icon" type="image/png" sizes="32x32" href="editor-icon-32.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="editor-icon-192.png" />
   <link rel="apple-touch-icon" href="editor-icon-192.png" />
@@ -228,10 +230,30 @@
 
   <!-- SheetJS - reads/writes the Excel workbook. Only actually used in
        browser mode (github-backend.js); harmless no-op weight in local
-       mode where the same job is done by the Node xlsx package instead. -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+       mode where the same job is done by the Node xlsx package instead.
+       VENDORED LOCALLY on purpose (was cdnjs): a CDN is both an offline
+       hole and exactly the kind of external domain a city IT network may
+       block outright, which would break the browser Editor with no
+       obvious cause. Same file, same version (0.18.5), just served from
+       this repo. License in vendor/xlsx-LICENSE.txt. -->
+  <script src="vendor/xlsx.full.min.js"></script>
   <script src="github-backend.js"></script>
   <script src="data-layer.js"></script>
   <script src="form.js"></script>
+
+  <!-- Registered in BOTH modes on purpose. On GitHub Pages it makes the
+       Editor installable (Chrome/Edge: the install icon in the address
+       bar) so it launches from its own desktop icon with no browser
+       chrome - which is what replaces needing the .bat shortcut. In
+       local mode it's harmless: the service worker explicitly refuses to
+       touch any of server.js's routes (see its LOCAL_API_PATHS list). -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js')
+          .catch(err => console.error('SW registration failed', err));
+      });
+    }
+  </script>
 </body>
 </html>

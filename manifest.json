@@ -1,0 +1,28 @@
+{
+  "name": "ARML Editor",
+  "short_name": "ARML Editor",
+  "description": "Admin tool for adding, editing, and publishing ARML resources.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14141a",
+  "theme_color": "#961200",
+  "icons": [
+    {
+      "src": "editor-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "editor-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "editor-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
