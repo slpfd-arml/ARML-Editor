@@ -196,12 +196,82 @@ function parseFilesField(str) {
     });
 }
 
-function buildFilesValue(keptFiles) {
-  // File uploads aren't wired up in browser mode yet (see README) - this
-  // only ever carries forward files that already existed on the resource
-  // being edited. Adding NEW PDFs still requires the local Editor or a
-  // manual commit to Assets/ on GitHub.
-  return keptFiles.map(f => (f.label && f.label !== f.filename ? `${f.label}|${f.filename}` : f.filename)).join("; ");
+function buildFilesValue(keptFiles, newFiles) {
+  const keptPart = keptFiles.map(f => (f.label && f.label !== f.filename ? `${f.label}|${f.filename}` : f.filename));
+  const newPart = (newFiles || []).map(f => (f.label ? `${f.label}|${f.filename}` : f.filename));
+  return [...keptPart, ...newPart].join("; ");
+}
+
+/* ---------- FILE UPLOAD (Assets/) ----------
+   Mirrors server.js's multer + uniqueFilename behavior: new PDFs always
+   land flat in Assets/ (never a subfolder), and a name collision gets
+   "-2", "-3", etc. appended rather than overwriting an existing file.
+   The local version checks collisions by walking the Assets folder on
+   disk; here, the equivalent is one recursive Git Trees API call - far
+   cheaper than a Contents API call per existing file. */
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // matches server.js's multer limit
+
+async function getAssetFilenames() {
+  const res = await githubRequest(`/git/trees/${GITHUB_BRANCH}?recursive=1`);
+  if (!res.ok) throw new Error(`Couldn't list repo files from GitHub (status ${res.status}).`);
+  const json = await res.json();
+  if (json.truncated) {
+    console.warn("GitHub's file listing was truncated (very large repo) - a filename collision could be missed.");
+  }
+  return new Set(
+    (json.tree || [])
+      .filter(e => e.type === "blob" && e.path.startsWith("Assets/"))
+      .map(e => e.path.split("/").pop())
+  );
+}
+
+function uniqueFilename(originalName, takenNames) {
+  const dotIdx = originalName.lastIndexOf(".");
+  const ext = dotIdx === -1 ? "" : originalName.slice(dotIdx);
+  const base = dotIdx === -1 ? originalName : originalName.slice(0, dotIdx);
+  let candidate = originalName;
+  let n = 2;
+  while (takenNames.has(candidate)) {
+    candidate = `${base}-${n}${ext}`;
+    n++;
+  }
+  takenNames.add(candidate); // claim immediately so two new files in the same save can't collide with each other
+  return candidate;
+}
+
+// Uploads every new PDF attached in this submission, one commit per file
+// (same one-file-per-commit trade publish.js already makes, for the same
+// reason - simplicity over atomicity). Returns [{filename, label}] in the
+// same order the files were picked, for buildFilesValue to consume.
+// PARTIAL-FAILURE NOTE: if file 2 of 3 fails, files before it are already
+// committed to Assets/ (orphaned - not yet referenced by any resource)
+// and the error is thrown up to the caller, which reports it and does NOT
+// write the workbook. Re-running the save will re-check names against the
+// now-updated tree and pick up cleanly; nothing is corrupted, just a
+// harmless unused file sitting in Assets/ until someone notices.
+async function uploadNewFiles(formData) {
+  const files = formData.getAll("files").filter(f => f && f.size > 0);
+  if (files.length === 0) return [];
+
+  for (const f of files) {
+    if (f.size > MAX_UPLOAD_BYTES) {
+      throw new Error(`"${f.name}" is ${(f.size / 1024 / 1024).toFixed(1)} MB, over the 25 MB limit. Compress it or split it up before attaching.`);
+    }
+  }
+
+  const labels = formData.getAll("fileLabels");
+  const takenNames = await getAssetFilenames();
+  const uploaded = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const finalName = uniqueFilename(file.name, takenNames);
+    const buffer = await file.arrayBuffer();
+    const base64 = arrayBufferToBase64(buffer);
+    await putFileContent(`Assets/${finalName}`, base64, `Attach file: ${finalName}`);
+    uploaded.push({ filename: finalName, label: (labels[i] || "").trim() });
+  }
+  return uploaded;
 }
 
 function rowFromBody(body, filesValue) {
@@ -242,12 +312,6 @@ function formDataToBody(formData) {
     }
   }
   return body;
-}
-
-function pushNote(hasFiles) {
-  return hasFiles
-    ? " Note: PDF attachments aren't supported by the browser version yet - add them through the local Editor, or upload the file to Assets/ on GitHub and reference it by filename."
-    : "";
 }
 
 const DEFERRED_PUBLISH_NOTE = " ARML will rebuild automatically in a few minutes.";
@@ -295,7 +359,6 @@ async function addResource(formData) {
     const body = formDataToBody(formData);
     const name = (body.name || "").trim();
     const broadCategory = (body.broadCategory || "").trim();
-    const hasFiles = formData.getAll("files").some(f => f && f.size > 0);
 
     if (!name) return { ok: false, error: "Resource Name is required." };
     if (!VALID_CATEGORIES.includes(broadCategory)) {
@@ -310,14 +373,21 @@ async function addResource(formData) {
       return { ok: false, error: `"${name}" already exists in the Resource List. Use Edit instead of Add, or use a distinguishing name.` };
     }
 
-    rows.push(rowFromBody(body, ""));
+    const uploaded = await uploadNewFiles(formData);
+    const filesValue = buildFilesValue([], uploaded);
+
+    rows.push(rowFromBody(body, filesValue));
     writeRowsToWorkbook(wb, rows);
     await commitWorkbook(wb, sha, `Add resource: ${name}`);
 
     return {
       ok: true,
-      message: `"${name}" saved and pushed to GitHub.${pushNote(hasFiles)}${DEFERRED_PUBLISH_NOTE}`,
-      publish: { attempted: true, pushed: [{ path: WORKBOOK_PATH }], failed: [] }
+      message: `"${name}" saved and pushed to GitHub.${DEFERRED_PUBLISH_NOTE}`,
+      publish: {
+        attempted: true,
+        pushed: [...uploaded.map(f => ({ path: `Assets/${f.filename}` })), { path: WORKBOOK_PATH }],
+        failed: []
+      }
     };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -330,7 +400,6 @@ async function updateResource(formData) {
     const originalName = (body.originalName || "").trim();
     const name = (body.name || "").trim();
     const broadCategory = (body.broadCategory || "").trim();
-    const hasFiles = formData.getAll("files").some(f => f && f.size > 0);
 
     if (!originalName) {
       return { ok: false, error: "Missing original resource reference - please re-open this resource from the Edit list and try again." };
@@ -357,7 +426,8 @@ async function updateResource(formData) {
 
     let keptFiles = [];
     try { keptFiles = JSON.parse(body.existingFiles || "[]"); } catch { keptFiles = []; }
-    const filesValue = buildFilesValue(keptFiles);
+    const uploaded = await uploadNewFiles(formData);
+    const filesValue = buildFilesValue(keptFiles, uploaded);
 
     rows[rowIndex] = rowFromBody(body, filesValue);
     writeRowsToWorkbook(wb, rows);
@@ -367,8 +437,12 @@ async function updateResource(formData) {
 
     return {
       ok: true,
-      message: `"${name}" updated and pushed to GitHub.${pushNote(hasFiles)}${DEFERRED_PUBLISH_NOTE}`,
-      publish: { attempted: true, pushed: [{ path: WORKBOOK_PATH }], failed: [] }
+      message: `"${name}" updated and pushed to GitHub.${DEFERRED_PUBLISH_NOTE}`,
+      publish: {
+        attempted: true,
+        pushed: [...uploaded.map(f => ({ path: `Assets/${f.filename}` })), { path: WORKBOOK_PATH }],
+        failed: []
+      }
     };
   } catch (err) {
     return { ok: false, error: err.message };
