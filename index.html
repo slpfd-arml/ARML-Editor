@@ -223,6 +223,12 @@
     </div>
   </div>
 
+  <!-- SheetJS - reads/writes the Excel workbook. Only actually used in
+       browser mode (github-backend.js); harmless no-op weight in local
+       mode where the same job is done by the Node xlsx package instead. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="github-backend.js"></script>
+  <script src="data-layer.js"></script>
   <script src="form.js"></script>
 </body>
 </html>

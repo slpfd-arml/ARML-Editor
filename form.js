@@ -111,8 +111,7 @@ async function loadResourceList() {
   editPickerHint.textContent = "Loading…";
   editResultsList.innerHTML = "";
   try {
-    const res = await fetch("/resources");
-    const data = await res.json();
+    const data = await DataLayer.getResources();
     allResources = data.resources || [];
     resourcesLoaded = true;
     editPickerHint.textContent = `${allResources.length} resources. Type to filter.`;
@@ -420,8 +419,7 @@ let exactDuplicateMatchName = null;
 let hasUnacknowledgedSimilarWarning = false;
 let pendingSimilarMatchName = null; // the single CLOSEST fuzzy match, for the dialog
 
-fetch("/resource-names")
-  .then(r => r.json())
+DataLayer.getResourceNames()
   .then(data => {
     existingNamesCased = data.names || [];
     existingNames = existingNamesCased.map(n => n.toLowerCase());
@@ -433,8 +431,7 @@ fetch("/resource-names")
 // extra round trip - and so the matched name is GUARANTEED to be
 // findable in this same array afterward, since it's the same array the
 // match came from in the first place.
-fetch("/resources")
-  .then(r => r.json())
+DataLayer.getResources()
   .then(data => { allResources = data.resources || []; })
   .catch(() => {});
 
@@ -534,11 +531,11 @@ async function performSave() {
       formData.append("fileLabels", input.value.trim());
     });
 
-    const endpoint = mode === "edit" ? "/update" : "/add";
-    const res = await fetch(endpoint, { method: "POST", body: formData });
-    const out = await res.json();
+    const out = mode === "edit"
+      ? await DataLayer.updateResource(formData)
+      : await DataLayer.addResource(formData);
 
-    if (!res.ok) {
+    if (!out.ok) {
       showStatus(out.error || "Something went wrong.", "error");
       return;
     }
@@ -561,7 +558,7 @@ async function performSave() {
       }
     }
   } catch (err) {
-    showStatus("Couldn't reach the server. Is start-add-resource-tool.bat still running?", "error");
+    showStatus("Couldn't save: " + (err.message || "unexpected error. If running locally, check that start-ARML-editor.bat is still running."), "error");
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = originalLabel;
@@ -673,15 +670,10 @@ deleteConfirmBtn.addEventListener("click", async () => {
   deleteConfirmBtn.textContent = "Deleting — rebuilding & publishing, this can take a bit…";
 
   try {
-    const res = await fetch("/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, confirmName: deleteConfirmInput.value })
-    });
-    const out = await res.json();
+    const out = await DataLayer.deleteResource(name, deleteConfirmInput.value);
     deleteModal.hidden = true;
 
-    if (!res.ok) {
+    if (!out.ok) {
       showStatus(out.error || "Delete failed.", "error");
       return;
     }
@@ -691,7 +683,7 @@ deleteConfirmBtn.addEventListener("click", async () => {
     existingNames = existingNames.filter(n => n !== name.toLowerCase());
     setTimeout(switchToEditMode, 900);
   } catch (err) {
-    showStatus("Couldn't reach the server to delete.", "error");
+    showStatus("Couldn't delete: " + (err.message || "unexpected error."), "error");
     deleteModal.hidden = true;
   } finally {
     deleteConfirmBtn.textContent = "Delete";
@@ -741,9 +733,8 @@ async function retryPublish() {
   const btn = document.getElementById("retryPublishBtn");
   if (btn) { btn.disabled = true; btn.textContent = "Retrying…"; }
   try {
-    const res = await fetch("/publish", { method: "POST" });
-    const out = await res.json();
-    if (!res.ok) {
+    const out = await DataLayer.republish();
+    if (!out.ok) {
       showStatus(out.error || "Retry failed.", "error");
       return;
     }
@@ -752,7 +743,7 @@ async function retryPublish() {
       showStatus("Published to GitHub successfully.", "success");
     }
   } catch (err) {
-    showStatus("Couldn't reach the server to retry.", "error");
+    showStatus("Couldn't retry: " + (err.message || "unexpected error."), "error");
   }
 }
 
@@ -760,28 +751,34 @@ async function exportBundle() {
   const btn = document.getElementById("exportBundleBtn");
   if (btn) { btn.disabled = true; btn.textContent = "Creating bundle…"; }
   try {
-    const res = await fetch("/export-bundle", { method: "POST" });
-    const out = await res.json();
-    if (!res.ok) {
+    const out = await DataLayer.exportBundle();
+    if (!out.ok) {
       showStatus(out.error || "Could not create the bundle.", "error");
       return;
     }
     showStatus(`${out.message} — find it in the main ARML folder.`, "success");
   } catch (err) {
-    showStatus("Couldn't reach the server to create the bundle.", "error");
+    showStatus("Couldn't create the bundle: " + (err.message || "unexpected error."), "error");
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = "Export update bundle instead"; }
   }
 }
 
-fetch("/publish-status")
-  .then(r => r.json())
+DataLayer.getPublishStatus()
   .then(status => {
     const versionEl = document.getElementById("editorVersionTag");
-    if (versionEl && status.version) versionEl.textContent = `ARML Editor v${status.version}`;
+    if (versionEl && status.version) {
+      versionEl.textContent = `ARML Editor v${status.version}` + (status.mode === "browser" ? " (browser)" : "");
+    }
 
     const el = document.getElementById("publishConfigNote");
     if (!el) return;
+    if (status.mode === "browser") {
+      el.textContent = status.configured
+        ? `GitHub publishing is on: ${status.owner}/${status.repo} (${status.branch} branch). Saves commit straight to GitHub; ARML rebuilds automatically within a few minutes.`
+        : "You'll be asked to paste a GitHub token the first time you save.";
+      return;
+    }
     if (!status.enabled) {
       el.textContent = "GitHub publishing is off - resources save locally only. See config.json to turn it on.";
     } else if (!status.configured) {

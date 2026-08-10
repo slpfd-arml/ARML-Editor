@@ -1,0 +1,426 @@
+/* ============================================================
+   github-backend.js
+   ------------------------------------------------------------
+   Does what server.js + publish.js do, but from inside the browser,
+   for when ARML Editor is running as a static site on GitHub Pages
+   with no local Node server behind it.
+
+   IMPORTANT DIFFERENCE FROM THE LOCAL VERSION:
+   The local version runs build-data.js synchronously on every save,
+   so it can report exactly which built files got pushed in the same
+   response. build-data.js can't run in a browser at all - it shells
+   out to detect-fillable.js and detect-ccitt-images.js, which parse
+   PDF binaries on disk with pdf-lib. There's no browser equivalent.
+
+   So this file does the one thing a browser CAN do: commit the
+   updated workbook straight to the ARML repo via the GitHub API. A
+   GitHub Action in that repo (rebuild-on-workbook-change.yml) notices
+   the workbook changed and runs the real, unmodified build-data.js on
+   GitHub's own servers, then commits data.js/version.json/etc. back.
+   That's what makes the change show up on devices a few minutes later
+   - same end result as the local version, just with GitHub doing the
+   build step instead of your own machine.
+
+   KEEP IN SYNC: mergeLegacyTags, parseFilesField, buildFilesValue,
+   rowFromBody, and VALID_CATEGORIES are duplicated from server.js on
+   purpose - same reasoning as server.js's own comment about
+   build-data.js's copy: small, stable, and duplicating beats sharing
+   a module across a browser bundle and a Node app.
+   ============================================================ */
+
+const GITHUB_OWNER = "slpfd-arml";
+const GITHUB_REPO = "ARML";
+const GITHUB_BRANCH = "main";
+const WORKBOOK_PATH = "ARM-Builder/New_ARM_Library.xlsx";
+const API_HOST = "https://api.github.com";
+const EDITOR_VERSION = "1.2.0"; // keep in step with package.json's version by hand
+
+const VALID_CATEGORIES = [
+  "Food & Basic Needs", "Housing & Shelter", "Health Care & Clinics",
+  "Mental Health & Substance Use", "Transportation", "Legal / Tenant Help",
+  "Benefits & Insurance", "Seniors & Disability", "Youth & Family",
+  "Domestic Violence & Safety", "Immigrant / Culturally Specific"
+];
+
+/* ---------- TOKEN HANDLING ----------
+   Desktop-only tool, so a native prompt() is fine - no need for a
+   styled modal. Token lives only in this browser's localStorage; it
+   is never written to any file, never committed, never sent anywhere
+   except api.github.com. */
+function getToken() {
+  let token = localStorage.getItem("arml_editor_token");
+  if (!token) token = promptForToken();
+  return token;
+}
+
+function promptForToken() {
+  const token = window.prompt(
+    "Paste your GitHub Personal Access Token to enable saving.\n\n" +
+    "This is stored only in this browser (localStorage) and is sent " +
+    "only to api.github.com - never committed, never logged."
+  );
+  if (token && token.trim()) {
+    localStorage.setItem("arml_editor_token", token.trim());
+    return token.trim();
+  }
+  return null;
+}
+
+function clearToken() {
+  localStorage.removeItem("arml_editor_token");
+}
+
+// Exposed so a "Change Token" button elsewhere in the UI can call it.
+window.ARMLClearGitHubToken = function () {
+  clearToken();
+  window.alert("Token cleared. You'll be prompted again on your next save.");
+};
+
+/* ---------- GITHUB CONTENTS API ---------- */
+async function githubRequest(pathPart, options = {}) {
+  const token = getToken();
+  if (!token) throw new Error("No GitHub token entered - can't save without one.");
+
+  const res = await fetch(`${API_HOST}/repos/${GITHUB_OWNER}/${GITHUB_REPO}${pathPart}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      ...(options.headers || {})
+    }
+  });
+
+  if (res.status === 401) {
+    clearToken();
+    throw new Error("GitHub rejected the token (401) - it may be wrong, expired, or revoked. Try saving again to re-enter it.");
+  }
+  if (res.status === 403) {
+    throw new Error("GitHub returned 403 - the token may lack permission for this repo, or GitHub's rate limit was hit.");
+  }
+  return res;
+}
+
+async function getFileContent(filePath) {
+  const res = await githubRequest(`/contents/${filePath}?ref=${GITHUB_BRANCH}`);
+  if (!res.ok) throw new Error(`Couldn't load ${filePath} from GitHub (status ${res.status}).`);
+  const json = await res.json();
+  return { sha: json.sha, base64: json.content.replace(/\n/g, "") };
+}
+
+async function putFileContent(filePath, base64Content, message, sha) {
+  const res = await githubRequest(`/contents/${filePath}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, content: base64Content, branch: GITHUB_BRANCH, sha })
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || `GitHub rejected the write to ${filePath} (status ${res.status}).`);
+  }
+  return res.json();
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+/* ---------- WORKBOOK READ/WRITE (SheetJS - same library server.js uses,
+   just the browser build instead of the Node build) ---------- */
+async function loadWorkbook() {
+  const { sha, base64 } = await getFileContent(WORKBOOK_PATH);
+  const buffer = base64ToArrayBuffer(base64);
+  const wb = XLSX.read(buffer, { type: "array" });
+  return { wb, sha };
+}
+
+function readRows(wb) {
+  return XLSX.utils.sheet_to_json(wb.Sheets["Resource List"], { defval: "" });
+}
+
+function writeRowsToWorkbook(wb, rows) {
+  const header = rows.length
+    ? Object.keys(rows[0])
+    : ["Resource Name", "Parent Organization/Agency", "Organization Type", "Services Provided",
+       "Contact Person", "Email Address", "Phone", "Alternate Phone", "Fax", "Alternate Fax", "TTY",
+       "Website", "Street Address", "Notes", "Hours", "Keywords", "Files", "Broad Category", "Service Tags"];
+  wb.Sheets["Resource List"] = XLSX.utils.json_to_sheet(rows, { header });
+}
+
+async function commitWorkbook(wb, sha, commitMessage) {
+  const out = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  const base64 = arrayBufferToBase64(out);
+  return putFileContent(WORKBOOK_PATH, base64, commitMessage, sha);
+}
+
+/* ---------- SHARED PARSING/FORMATTING - ported from server.js ---------- */
+function toArray(v) {
+  if (v === undefined || v === null || v === "") return [];
+  return Array.isArray(v) ? v : [v];
+}
+
+function mergeLegacyTags(keywordsRaw, serviceTagsRaw) {
+  const kw = String(keywordsRaw || "").split(",").map(s => s.trim()).filter(Boolean);
+  const st = String(serviceTagsRaw || "").split(";").map(s => s.trim()).filter(Boolean);
+  const seen = new Set();
+  const merged = [];
+  for (const term of [...kw, ...st]) {
+    const key = term.toLowerCase();
+    if (!seen.has(key)) { seen.add(key); merged.push(term); }
+  }
+  return merged;
+}
+
+function parseFilesField(str) {
+  return String(str || "")
+    .split(";")
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(entry => {
+      const pipeIdx = entry.indexOf("|");
+      return pipeIdx === -1
+        ? { label: entry, filename: entry }
+        : { label: entry.slice(0, pipeIdx).trim(), filename: entry.slice(pipeIdx + 1).trim() };
+    });
+}
+
+function buildFilesValue(keptFiles) {
+  // File uploads aren't wired up in browser mode yet (see README) - this
+  // only ever carries forward files that already existed on the resource
+  // being edited. Adding NEW PDFs still requires the local Editor or a
+  // manual commit to Assets/ on GitHub.
+  return keptFiles.map(f => (f.label && f.label !== f.filename ? `${f.label}|${f.filename}` : f.filename)).join("; ");
+}
+
+function rowFromBody(body, filesValue) {
+  return {
+    "Resource Name": (body.name || "").trim(),
+    "Parent Organization/Agency": body.parent || "",
+    "Organization Type": body.type || "",
+    "Services Provided": body.services || "",
+    "Contact Person": body.contact || "",
+    "Email Address": body.email || "",
+    "Phone": body.phone || "",
+    "Alternate Phone": body.altPhone || "",
+    "Fax": body.fax || "",
+    "Alternate Fax": body.altFax || "",
+    "TTY": body.tty || "",
+    "Website": body.website || "",
+    "Street Address": body.address || "",
+    "Notes": body.notes || "",
+    "Hours": body.hours || "",
+    "Keywords": toArray(body.keywords).join(", "),
+    "Files": filesValue,
+    "Broad Category": (body.broadCategory || "").trim(),
+    "Service Tags": ""
+  };
+}
+
+// A FormData built by form.js's normal submit handler; converts it into the
+// same flat "body" shape server.js's req.body would have had, so
+// rowFromBody works unmodified.
+function formDataToBody(formData) {
+  const body = {};
+  for (const [key, value] of formData.entries()) {
+    if (key === "files" || key === "fileLabels") continue; // not supported yet - see note in buildFilesValue
+    if (body[key] !== undefined) {
+      body[key] = Array.isArray(body[key]) ? [...body[key], value] : [body[key], value];
+    } else {
+      body[key] = value;
+    }
+  }
+  return body;
+}
+
+function pushNote(hasFiles) {
+  return hasFiles
+    ? " Note: PDF attachments aren't supported by the browser version yet - add them through the local Editor, or upload the file to Assets/ on GitHub and reference it by filename."
+    : "";
+}
+
+const DEFERRED_PUBLISH_NOTE = " ARML will rebuild automatically in a few minutes.";
+
+/* ---------- PUBLIC API - same surface as the local /resources, /add,
+   /update, /delete, /publish-status endpoints ---------- */
+
+async function getResources() {
+  const { wb } = await loadWorkbook();
+  const rows = readRows(wb);
+  const resources = rows
+    .filter(r => r["Resource Name"])
+    .map(r => ({
+      name: r["Resource Name"],
+      parent: r["Parent Organization/Agency"] || "",
+      type: r["Organization Type"] || "",
+      broadCategory: r["Broad Category"] || "",
+      services: r["Services Provided"] || "",
+      contact: r["Contact Person"] || "",
+      email: r["Email Address"] || "",
+      phone: r["Phone"] || "",
+      altPhone: r["Alternate Phone"] || "",
+      fax: r["Fax"] || "",
+      altFax: r["Alternate Fax"] || "",
+      tty: r["TTY"] || "",
+      website: r["Website"] || "",
+      address: r["Street Address"] || "",
+      notes: r["Notes"] || "",
+      hours: r["Hours"] || "",
+      keywords: mergeLegacyTags(r["Keywords"], r["Service Tags"]),
+      files: parseFilesField(r["Files"])
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { resources };
+}
+
+async function getResourceNames() {
+  const { wb } = await loadWorkbook();
+  const rows = readRows(wb);
+  return { names: rows.map(r => r["Resource Name"]).filter(Boolean) };
+}
+
+async function addResource(formData) {
+  try {
+    const body = formDataToBody(formData);
+    const name = (body.name || "").trim();
+    const broadCategory = (body.broadCategory || "").trim();
+    const hasFiles = formData.getAll("files").some(f => f && f.size > 0);
+
+    if (!name) return { ok: false, error: "Resource Name is required." };
+    if (!VALID_CATEGORIES.includes(broadCategory)) {
+      return { ok: false, error: "Please choose a valid Broad Category from the list." };
+    }
+
+    const { wb, sha } = await loadWorkbook();
+    const rows = readRows(wb);
+
+    const duplicate = rows.find(r => String(r["Resource Name"]).trim().toLowerCase() === name.toLowerCase());
+    if (duplicate) {
+      return { ok: false, error: `"${name}" already exists in the Resource List. Use Edit instead of Add, or use a distinguishing name.` };
+    }
+
+    rows.push(rowFromBody(body, ""));
+    writeRowsToWorkbook(wb, rows);
+    await commitWorkbook(wb, sha, `Add resource: ${name}`);
+
+    return {
+      ok: true,
+      message: `"${name}" saved and pushed to GitHub.${pushNote(hasFiles)}${DEFERRED_PUBLISH_NOTE}`,
+      publish: { attempted: true, pushed: [{ path: WORKBOOK_PATH }], failed: [] }
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+async function updateResource(formData) {
+  try {
+    const body = formDataToBody(formData);
+    const originalName = (body.originalName || "").trim();
+    const name = (body.name || "").trim();
+    const broadCategory = (body.broadCategory || "").trim();
+    const hasFiles = formData.getAll("files").some(f => f && f.size > 0);
+
+    if (!originalName) {
+      return { ok: false, error: "Missing original resource reference - please re-open this resource from the Edit list and try again." };
+    }
+    if (!name) return { ok: false, error: "Resource Name is required." };
+    if (!VALID_CATEGORIES.includes(broadCategory)) {
+      return { ok: false, error: "Please choose a valid Broad Category from the list." };
+    }
+
+    const { wb, sha } = await loadWorkbook();
+    const rows = readRows(wb);
+
+    const rowIndex = rows.findIndex(r => String(r["Resource Name"]).trim() === originalName);
+    if (rowIndex === -1) {
+      return { ok: false, error: `Couldn't find "${originalName}" in the workbook anymore - it may have been edited or removed elsewhere. Refresh the Edit list and try again.` };
+    }
+
+    if (name.toLowerCase() !== originalName.toLowerCase()) {
+      const collision = rows.find((r, i) => i !== rowIndex && String(r["Resource Name"]).trim().toLowerCase() === name.toLowerCase());
+      if (collision) {
+        return { ok: false, error: `"${name}" already exists as a different resource. Choose a different name, or edit that entry instead.` };
+      }
+    }
+
+    let keptFiles = [];
+    try { keptFiles = JSON.parse(body.existingFiles || "[]"); } catch { keptFiles = []; }
+    const filesValue = buildFilesValue(keptFiles);
+
+    rows[rowIndex] = rowFromBody(body, filesValue);
+    writeRowsToWorkbook(wb, rows);
+
+    const commitMsg = name === originalName ? `Edit resource: ${name}` : `Edit resource: ${originalName} -> ${name}`;
+    await commitWorkbook(wb, sha, commitMsg);
+
+    return {
+      ok: true,
+      message: `"${name}" updated and pushed to GitHub.${pushNote(hasFiles)}${DEFERRED_PUBLISH_NOTE}`,
+      publish: { attempted: true, pushed: [{ path: WORKBOOK_PATH }], failed: [] }
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+async function deleteResource(name, confirmName) {
+  try {
+    if (!name) return { ok: false, error: "Missing resource name." };
+    if (confirmName !== name) {
+      return { ok: false, error: "Confirmation text didn't match the resource name exactly. Nothing was deleted." };
+    }
+
+    const { wb, sha } = await loadWorkbook();
+    const rows = readRows(wb);
+    const rowIndex = rows.findIndex(r => String(r["Resource Name"]).trim() === name);
+    if (rowIndex === -1) {
+      return { ok: false, error: `Couldn't find "${name}" in the workbook - it may have already been removed.` };
+    }
+
+    rows.splice(rowIndex, 1);
+    writeRowsToWorkbook(wb, rows);
+    await commitWorkbook(wb, sha, `Delete resource: ${name}`);
+
+    return {
+      ok: true,
+      message: `"${name}" deleted and pushed to GitHub.${DEFERRED_PUBLISH_NOTE}`,
+      publish: { attempted: true, pushed: [{ path: WORKBOOK_PATH }], failed: [] }
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+async function getPublishStatus() {
+  const configured = Boolean(localStorage.getItem("arml_editor_token"));
+  return {
+    version: EDITOR_VERSION,
+    enabled: true,
+    configured,
+    owner: GITHUB_OWNER,
+    repo: GITHUB_REPO,
+    branch: GITHUB_BRANCH,
+    mode: "browser"
+  };
+}
+
+window.ARMLGitHubBackend = {
+  getResources,
+  getResourceNames,
+  addResource,
+  updateResource,
+  deleteResource,
+  getPublishStatus
+};
