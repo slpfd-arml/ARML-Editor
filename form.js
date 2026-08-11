@@ -791,8 +791,13 @@ DataLayer.getPublishStatus()
     // 3. Update the publish config note
     const el = document.getElementById("publishConfigNote");
     if (!el) return;
-    
-    if (status.mode === "browser") {
+
+   if (status.mode === "PWA") {
+      el.textContent = status.configured
+        ? `GitHub publishing is on (${platformText}): ${status.owner}/${status.repo} (${status.branch} branch). Saves commit straight to GitHub.`
+        : `You'll be asked to paste a GitHub token the first time you save from the ${platformText}.`; 
+   
+     if (status.mode === "browser") {
       el.textContent = status.configured
         ? `GitHub publishing is on (${platformText}): ${status.owner}/${status.repo} (${status.branch} branch). Saves commit straight to GitHub.`
         : `You'll be asked to paste a GitHub token the first time you save from the ${platformText}.`;
