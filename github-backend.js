@@ -477,6 +477,68 @@ async function deleteResource(name, confirmName) {
   }
 }
 
+/* ---------- CONNECTION STATUS ----------
+   Answers the only question that actually matters before someone spends
+   ten minutes typing a resource: "will Save work right now?"
+
+   Deliberately does NOT ping the ARML site. ARML is static files on
+   GitHub Pages - it has no server, and the Editor never writes to it
+   directly. Reaching ARML would prove only that a website is up, and
+   would show green in every single case where saving is actually
+   broken: no token, revoked token, read-only token, api.github.com
+   firewalled, wrong repo name. Asking GitHub about the repo answers the
+   real question, because it's the same API and the same credential that
+   an actual save would use.
+
+   Uses the repo endpoint rather than a write test on purpose - it
+   reports permissions.push without creating a junk commit to find out. */
+async function checkConnection() {
+  const token = localStorage.getItem("arml_editor_token");
+  if (!token) {
+    return { state: "warn", message: "No token yet — you'll be asked for one on your first save." };
+  }
+
+  try {
+    const res = await fetch(`${API_HOST}/repos/${GITHUB_OWNER}/${GITHUB_REPO}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+      cache: "no-store"
+    });
+
+    if (res.status === 401) {
+      // Deliberately does NOT clear the stored token the way
+      // githubRequest() does. Clearing here would make the very next
+      // status render report "No token yet", which is a different and
+      // misleading problem - the user HAS a token, it's just been
+      // revoked or mistyped, and telling them that is the whole point.
+      return { state: "error", message: "Token rejected by GitHub — it may be revoked or mistyped. Saving will fail." };
+    }
+    if (res.status === 404) {
+      // 404 rather than 403 is what GitHub returns for a repo the token
+      // can't see at all - indistinguishable from "doesn't exist" by
+      // design, so say both rather than guessing wrong.
+      return { state: "error", message: `Can't see ${GITHUB_OWNER}/${GITHUB_REPO} — wrong repo name, or the token has no access to it.` };
+    }
+    if (!res.ok) {
+      return { state: "error", message: `GitHub returned ${res.status}. Saving may fail.` };
+    }
+
+    const repo = await res.json();
+    const canPush = repo.permissions && repo.permissions.push;
+    if (!canPush) {
+      return { state: "error", message: "Token is read-only — it can load resources but Save will fail. Needs write access." };
+    }
+    return { state: "ok", message: `Connected to ${GITHUB_OWNER}/${GITHUB_REPO} — ready to save.` };
+  } catch (err) {
+    // A network-level throw here (rather than an HTTP status) is the
+    // signature of api.github.com being unreachable - offline, or
+    // blocked by a network filter, which is a realistic failure on a
+    // city network and worth naming explicitly rather than showing a
+    // generic error.
+    return { state: "error", message: "Can't reach api.github.com — you're offline, or the network is blocking it." };
+  }
+}
+
+
 async function getPublishStatus() {
   const configured = Boolean(localStorage.getItem("arml_editor_token"));
   return {
@@ -496,5 +558,6 @@ window.ARMLGitHubBackend = {
   addResource,
   updateResource,
   deleteResource,
-  getPublishStatus
+  getPublishStatus,
+  checkConnection
 };

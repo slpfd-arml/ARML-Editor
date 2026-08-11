@@ -73,6 +73,25 @@ const DataLayer = (() => {
       const res = await fetch("/export-bundle", { method: "POST" });
       const out = await res.json();
       return { ok: res.ok, ...out };
+    },
+    /* Local mode can't ask GitHub directly the way browser mode does -
+       the token lives in config.json on the server side and never
+       reaches this page. server.js already reports what it knows via
+       /publish-status, so that's reused rather than inventing a second
+       endpoint. Less precise than the browser check (it confirms config
+       is present, not that GitHub accepted it), and the wording below
+       says so rather than implying a stronger guarantee. */
+    async checkConnection() {
+      try {
+        const res = await fetch("/publish-status", { cache: "no-store" });
+        if (!res.ok) return { state: "error", message: "Local server isn't responding. Is start-ARML-editor.bat still running?" };
+        const s = await res.json();
+        if (!s.enabled) return { state: "warn", message: "GitHub publishing is off in config.json — saves stay local only." };
+        if (!s.configured) return { state: "error", message: "config.json is missing owner/repo/token — publishing will be skipped." };
+        return { state: "ok", message: `Configured to publish to ${s.owner}/${s.repo} (${s.branch}).` };
+      } catch {
+        return { state: "error", message: "Local server isn't responding. Is start-ARML-editor.bat still running?" };
+      }
     }
   };
 
@@ -92,7 +111,8 @@ const DataLayer = (() => {
     },
     async exportBundle() {
       return { ok: false, error: "Bundle export isn't available in the browser version. Download the ARML repo as a zip from GitHub instead (Code -> Download ZIP)." };
-    }
+    },
+    async checkConnection() { return window.ARMLGitHubBackend.checkConnection(); }
   };
 
   async function backend() {
@@ -108,6 +128,7 @@ const DataLayer = (() => {
     getPublishStatus: async (...a) => (await backend()).getPublishStatus(...a),
     republish: async (...a) => (await backend()).republish(...a),
     exportBundle: async (...a) => (await backend()).exportBundle(...a),
+    checkConnection: async (...a) => (await backend()).checkConnection(...a),
     detectMode
   };
 })();

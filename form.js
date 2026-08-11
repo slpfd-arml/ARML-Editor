@@ -563,6 +563,9 @@ async function performSave() {
     submitBtn.disabled = false;
     submitBtn.textContent = originalLabel;
     hideSaveProgress();
+    // Fires on success AND failure on purpose - a failed save is exactly
+    // when the connection light most needs to stop saying "ready".
+    document.dispatchEvent(new CustomEvent("arml:saved"));
   }
 }
 
@@ -791,3 +794,42 @@ DataLayer.getPublishStatus()
 
 /* ---------- INITIAL STATE ---------- */
 switchToAddMode();
+
+/* ---------- CONNECTION STATUS LIGHT ----------
+   Checks whether saving will actually work, and says so before someone
+   spends ten minutes filling out the form. See github-backend.js's
+   checkConnection() for why this asks GitHub about repo permissions
+   rather than pinging the ARML site (a ping would show green in every
+   case where saving is actually broken). */
+const connStatusBtn = document.getElementById("connStatus");
+const connStatusText = document.getElementById("connStatusText");
+
+function setConnStatus(state, message) {
+  if (!connStatusBtn) return;
+  connStatusBtn.classList.remove("conn-ok", "conn-warn", "conn-error", "conn-unknown", "conn-checking");
+  connStatusBtn.classList.add("conn-" + state);
+  connStatusText.textContent = message;
+  connStatusBtn.title = state === "checking" ? "Checking…" : "Click to re-check connection";
+}
+
+async function refreshConnStatus() {
+  setConnStatus("checking", "Checking connection…");
+  try {
+    const result = await DataLayer.checkConnection();
+    setConnStatus(result.state, result.message);
+  } catch (err) {
+    setConnStatus("error", "Couldn't check connection: " + (err.message || "unexpected error."));
+  }
+}
+
+if (connStatusBtn) {
+  connStatusBtn.addEventListener("click", refreshConnStatus);
+  refreshConnStatus();
+}
+
+/* Re-check after every save attempt, success or failure. This is exactly
+   when the answer is most likely to have just changed: a token gets
+   entered on first save, or a save fails because the network dropped
+   since page load. Without this the light could sit on a stale "ready"
+   while saves are failing. */
+document.addEventListener("arml:saved", refreshConnStatus);
