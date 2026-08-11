@@ -35,7 +35,7 @@ body {
 }
 
 .app-header .patch {
-  height: 56px;
+  height: 72px; /* matches ARML's own .patch exactly - was 56px */
   margin-right: 1rem;
   flex-shrink: 0;
 }
