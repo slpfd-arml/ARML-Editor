@@ -769,10 +769,35 @@ async function exportBundle() {
 
 DataLayer.getPublishStatus()
   .then(status => {
+    // 1. Determine the environment once
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    let environmentLabel = " (local)";
+    let platformText = "local server";
+
+    if (isPWA) {
+      environmentLabel = " (PWA)";
+      platformText = "PWA";
+    } else if (status.mode === "browser") {
+      environmentLabel = " (browser)";
+      platformText = "browser";
+    }
+
+    // 2. Update the version tag
     const versionEl = document.getElementById("editorVersionTag");
     if (versionEl && status.version) {
-      versionEl.textContent = `ARML Editor v${status.version}` + (status.mode === "browser" ? " (browser)" : "");
+      versionEl.textContent = `ARML Editor v${status.version}${environmentLabel}`;
     }
+
+    // 3. Update the publish config note
+    const el = document.getElementById("publishConfigNote");
+    if (!el) return;
+    
+    if (status.mode === "browser") {
+      el.textContent = status.configured
+        ? `GitHub publishing is on (${platformText}): ${status.owner}/${status.repo} (${status.branch} branch). Saves commit straight to GitHub.`
+        : `You'll be asked to paste a GitHub token the first time you save from the ${platformText}.`;
+    }
+  });
 
     const el = document.getElementById("publishConfigNote");
     if (!el) return;
