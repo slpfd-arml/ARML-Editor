@@ -76,6 +76,18 @@ window.ARMLClearGitHubToken = function () {
   window.alert("Token cleared. You'll be prompted again on your next save.");
 };
 
+/* Prompts for a token only if one isn't already stored, and reports
+   whether we ended up with one. Exposed so the UI can ask for the token
+   at load time instead of ambushing someone mid-save - it's a much
+   better moment to hand over a credential than after they've already
+   typed out a whole resource. Returns false if they dismiss the prompt,
+   which is a legitimate choice: the connection light then explains the
+   situation and clicking it re-prompts, so dismissing isn't a dead end. */
+window.ARMLEnsureGitHubToken = function () {
+  if (localStorage.getItem("arml_editor_token")) return true;
+  return Boolean(promptForToken());
+};
+
 /* ---------- GITHUB CONTENTS API ---------- */
 async function githubRequest(pathPart, options = {}) {
   const token = getToken();
@@ -91,8 +103,13 @@ async function githubRequest(pathPart, options = {}) {
   });
 
   if (res.status === 401) {
-    clearToken();
-    throw new Error("GitHub rejected the token (401) - it may be wrong, expired, or revoked. Try saving again to re-enter it.");
+    // Deliberately does NOT clear the stored token. It used to, so the
+    // next save would re-prompt - but that made a background call (the
+    // eager resource preload at load) able to wipe the credential before
+    // checkConnection could look at it, turning "token revoked" into
+    // "no token", which points at a different fix. The token now stays
+    // put and the connection light offers re-entry instead.
+    throw new Error("GitHub rejected the token (401) - it may be wrong, expired, or revoked. Click the connection light to enter a new one.");
   }
   if (res.status === 403) {
     throw new Error("GitHub returned 403 - the token may lack permission for this repo, or GitHub's rate limit was hit.");
@@ -495,7 +512,10 @@ async function deleteResource(name, confirmName) {
 async function checkConnection() {
   const token = localStorage.getItem("arml_editor_token");
   if (!token) {
-    return { state: "warn", message: "No token yet — you'll be asked for one on your first save." };
+    // Wording assumes the load-time prompt (see form.js initConnStatus)
+    // has already happened and been dismissed - "you'll be asked on your
+    // first save" would be stale advice now that we ask up front.
+    return { state: "warn", message: "No token — click here to enter one. Saving won't work until you do." };
   }
 
   try {
@@ -516,7 +536,7 @@ async function checkConnection() {
       // 404 rather than 403 is what GitHub returns for a repo the token
       // can't see at all - indistinguishable from "doesn't exist" by
       // design, so say both rather than guessing wrong.
-      return { state: "error", message: `Can't see ${GITHUB_REPO} — wrong repo name, or the token has no access to it.` };
+      return { state: "error", message: `Can't see ${GITHUB_OWNER}/${GITHUB_REPO} — wrong repo name, or the token has no access to it.` };
     }
     if (!res.ok) {
       return { state: "error", message: `GitHub returned ${res.status}. Saving may fail.` };
@@ -527,7 +547,7 @@ async function checkConnection() {
     if (!canPush) {
       return { state: "error", message: "Token is read-only — it can load resources but Save will fail. Needs write access." };
     }
-    return { state: "ok", message: `Connected to ${GITHUB_REPO} — ready to save.` };
+    return { state: "ok", message: "Connected to ARML — ready to save." };
   } catch (err) {
     // A network-level throw here (rather than an HTTP status) is the
     // signature of api.github.com being unreachable - offline, or

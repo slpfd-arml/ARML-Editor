@@ -767,40 +767,26 @@ async function exportBundle() {
   }
 }
 
-  DataLayer.getPublishStatus()
-  .then(status => {
-    // 1. Determine the environment once
-    const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    let environmentLabel = " (local)";
-    let platformText = "local server";
-
-    if (isPWA) {
-      environmentLabel = " (PWA)";
-      platformText = "PWA";
-    } else if (status.mode === "browser") {
-      environmentLabel = " (browser)";
-      platformText = "browser";
-    }
-
-    // 2. Update the version tag
+/* Version tag shows the display CONTEXT (local / browser / PWA), while
+   everything about tokens keys off the BACKEND mode instead - see
+   data-layer.js's getContext() comment for why conflating the two is a
+   real bug rather than a nitpick. */
+Promise.all([DataLayer.getPublishStatus(), DataLayer.contextLabel(), DataLayer.detectMode()])
+  .then(([status, contextLabel, backendMode]) => {
     const versionEl = document.getElementById("editorVersionTag");
     if (versionEl && status.version) {
-      versionEl.textContent = `ARML Editor v${status.version}${environmentLabel}`;
+      versionEl.textContent = `ARML Editor v${status.version} (${contextLabel})`;
     }
 
-    // 3. Update the publish config note
     const el = document.getElementById("publishConfigNote");
     if (!el) return;
 
-    // Handle PWA and Browser modes (Token prompting)
-    if (isPWA || status.mode === "browser") {
+    if (backendMode === "browser") {
       el.textContent = status.configured
-        ? `GitHub publishing is on (${platformText}): ${status.owner}/${status.repo} (${status.branch} branch). Saves commit straight to GitHub.`
-        : `You'll be asked to paste a GitHub token the first time you save from the ${platformText}.`;
-      return; // Exit here so the local logic below doesn't run
+        ? "GitHub publishing is on. Saves commit straight to GitHub; ARML rebuilds automatically within a few minutes."
+        : "Paste a GitHub token to enable saving — click the status light if you dismissed the prompt.";
+      return;
     }
-
-    // Handle Local mode
     if (!status.enabled) {
       el.textContent = "GitHub publishing is off - resources save locally only. See config.json to turn it on.";
     } else if (!status.configured) {
@@ -841,9 +827,52 @@ async function refreshConnStatus() {
   }
 }
 
-if (connStatusBtn) {
-  connStatusBtn.addEventListener("click", refreshConnStatus);
+/* Clicking the light re-checks. If we're in browser/PWA mode and there
+   still isn't a token, clicking re-opens the token prompt instead -
+   which is what makes dismissing the initial prompt recoverable without
+   a page reload. */
+async function onConnStatusClick() {
+  const backendMode = await DataLayer.detectMode();
+  if (backendMode === "browser") {
+    // Re-prompt when there's no token OR when the stored one was
+    // rejected - both are "this credential needs replacing", and the
+    // light is the one obvious place to fix it.
+    const rejected = connStatusBtn.classList.contains("conn-error") &&
+                     /rejected|read-only/i.test(connStatusText.textContent);
+    if (!localStorage.getItem("arml_editor_token") || rejected) {
+      localStorage.removeItem("arml_editor_token");
+      window.ARMLEnsureGitHubToken();
+    }
+  }
   refreshConnStatus();
+}
+
+/* Ask for the token at LOAD, not on first save. Keyed on backend mode,
+   not display mode: local mode reads its token from config.json
+   server-side and must never prompt here, whether or not it happens to
+   be running as an installed PWA. Dismissing is allowed - the light
+   goes amber and explains, and clicking it prompts again.
+
+   ORDER MATTERS: check FIRST, then prompt only if the check says no
+   token exists. Prompting blindly up front meant a REVOKED token got
+   reported as "no token" - a materially different problem pointing at a
+   different fix (re-paste vs. go generate a new one on GitHub). */
+async function initConnStatus() {
+  const backendMode = await DataLayer.detectMode();
+  if (backendMode !== "browser") {
+    refreshConnStatus();
+    return;
+  }
+
+  if (!localStorage.getItem("arml_editor_token")) {
+    window.ARMLEnsureGitHubToken();
+  }
+  refreshConnStatus();
+}
+
+if (connStatusBtn) {
+  connStatusBtn.addEventListener("click", onConnStatusClick);
+  initConnStatus();
 }
 
 /* Re-check after every save attempt, success or failure. This is exactly

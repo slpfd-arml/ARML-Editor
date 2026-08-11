@@ -30,8 +30,34 @@ const DataLayer = (() => {
     return mode;
   }
 
-  /* ---------- LOCAL MODE - thin wrappers around the existing endpoints,
-     behavior identical to what form.js used to call directly ---------- */
+  /* ---------- ENVIRONMENT DETECTION ----------
+     TWO SEPARATE QUESTIONS, deliberately not merged:
+
+       detectMode()   "Is there a local server behind this page?"
+                      -> local | browser. Decides which BACKEND runs,
+                         and therefore whether a token is needed at all
+                         (local mode's token lives in config.json,
+                         server-side, and is never prompted for here).
+
+       getContext()   "How is this page being displayed?"
+                      -> local | browser | pwa. Cosmetic/informational
+                         only - which label to show the user.
+
+     Merging these is a real bug, not a style choice: the service worker
+     registers in BOTH modes, so the local Editor can be installed as a
+     PWA too. In that case display is "pwa" but the backend is still
+     "local", and anything keyed on display would wrongly announce that
+     the user will be prompted for a token they'll never be asked for. */
+  async function getContext() {
+    const backendMode = await detectMode();
+    if (backendMode === "local") return "local";
+    const standalone =
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+      window.navigator.standalone === true;
+    return standalone ? "pwa" : "browser";
+  }
+
+  const CONTEXT_LABELS = { local: "local", browser: "browser", pwa: "PWA" };
   const local = {
     async getResources() {
       const res = await fetch("/resources");
@@ -129,7 +155,9 @@ const DataLayer = (() => {
     republish: async (...a) => (await backend()).republish(...a),
     exportBundle: async (...a) => (await backend()).exportBundle(...a),
     checkConnection: async (...a) => (await backend()).checkConnection(...a),
-    detectMode
+    detectMode,
+    getContext,
+    contextLabel: async () => CONTEXT_LABELS[await getContext()]
   };
 })();
 
