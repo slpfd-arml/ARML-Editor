@@ -770,29 +770,20 @@ async function exportBundle() {
 /* Version tag shows the display CONTEXT (local / browser / PWA), while
    everything about tokens keys off the BACKEND mode instead - see
    data-layer.js's getContext() comment for why conflating the two is a
-   real bug rather than a nitpick. */
-Promise.all([DataLayer.getPublishStatus(), DataLayer.contextLabel(), DataLayer.detectMode()])
-  .then(([status, contextLabel, backendMode]) => {
+   real bug rather than a nitpick.
+
+   No more publishConfigNote: it used to restate what the connection
+   light already says one line below it - "GitHub publishing is on,
+   ready to save" next to a dot that says exactly that. Removed for both
+   modes, not just browser - the local-mode text ("see config.json") was
+   the one piece of genuinely non-duplicate info it carried, but a
+   config problem there already surfaces as the light's own error state,
+   so it wasn't worth keeping a whole row around for that alone. */
+Promise.all([DataLayer.getPublishStatus(), DataLayer.contextLabel()])
+  .then(([status, contextLabel]) => {
     const versionEl = document.getElementById("editorVersionTag");
     if (versionEl && status.version) {
       versionEl.textContent = `ARML Editor v${status.version} (${contextLabel})`;
-    }
-
-    const el = document.getElementById("publishConfigNote");
-    if (!el) return;
-
-    if (backendMode === "browser") {
-      el.textContent = status.configured
-        ? "GitHub publishing is on. Saves commit straight to GitHub; ARML rebuilds automatically within a few minutes."
-        : "Paste a GitHub token to enable saving — click the status light if you dismissed the prompt.";
-      return;
-    }
-    if (!status.enabled) {
-      el.textContent = "GitHub publishing is off - resources save locally only. See config.json to turn it on.";
-    } else if (!status.configured) {
-      el.textContent = "GitHub publishing is on but config.json is missing owner/repo/token - publishing will be skipped.";
-    } else {
-      el.textContent = `GitHub publishing is on: ${status.owner}/${status.repo} (${status.branch} branch).`;
     }
   })
   .catch(() => {});
