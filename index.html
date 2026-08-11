@@ -20,15 +20,20 @@
       <h1 id="pageTitle">ARML Editor</h1>
       <p id="pageSubtitle">Saves directly to the workbook and pushes the update to ARML.</p>
       <p class="hint" id="publishConfigNote"></p>
-      <!-- Clickable: re-checks on demand, so someone who just fixed a
-           token or reconnected to wifi isn't stuck looking at a stale
-           red dot with no way to refresh short of reloading. -->
-      <button type="button" id="connStatus" class="conn-status conn-unknown"
-              title="Click to re-check connection">
-        <span class="conn-dot"></span>
-        <span id="connStatusText">Checking connection…</span>
-      </button>
-      <p class="editor-version-tag" id="editorVersionTag"></p>
+      <!-- Version and connection light share one row: both are "state of
+           this tool right now" information, so they read better together
+           than stacked as separate lines. The light is clickable - it
+           re-checks on demand, so someone who just fixed a token or
+           reconnected to wifi isn't stuck looking at a stale red dot
+           with no way to refresh short of reloading. -->
+      <div class="status-row">
+        <p class="editor-version-tag" id="editorVersionTag"></p>
+        <button type="button" id="connStatus" class="conn-status conn-unknown"
+                title="Click to re-check connection">
+          <span class="conn-dot"></span>
+          <span id="connStatusText">Checking connection…</span>
+        </button>
+      </div>
     </div>
   </header>
 

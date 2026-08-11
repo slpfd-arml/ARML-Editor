@@ -571,11 +571,24 @@ textarea {
    what's wrong in words. A red/green dot alone is unreadable to anyone
    with red-green colour blindness, which is common enough in a fire
    department that it's worth not relying on hue. */
+/* Version tag and connection light sit on one row. The version tag
+   inherits .title-block p's top margin, which would push it out of
+   alignment with the pill next to it - align-items:center handles that
+   without needing to override the inherited margin and risk changing
+   how the tag looks anywhere else. Wraps on narrow windows rather than
+   letting a long status message squeeze the version out of view. */
+.status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .conn-status {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  margin: 0.25rem 0 0;
+  margin: 0;
   padding: 0.2rem 0.5rem 0.2rem 0.4rem;
   font-family: var(--font);
   font-size: 0.78rem;
