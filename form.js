@@ -767,7 +767,7 @@ async function exportBundle() {
   }
 }
 
-DataLayer.getPublishStatus()
+  DataLayer.getPublishStatus()
   .then(status => {
     // 1. Determine the environment once
     const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
@@ -792,26 +792,15 @@ DataLayer.getPublishStatus()
     const el = document.getElementById("publishConfigNote");
     if (!el) return;
 
-   if (status.mode === "PWA") {
-      el.textContent = status.configured
-        ? `GitHub publishing is on (${platformText}): ${status.owner}/${status.repo} (${status.branch} branch). Saves commit straight to GitHub.`
-        : `You'll be asked to paste a GitHub token the first time you save from the ${platformText}.`; 
-   
-     if (status.mode === "browser") {
+    // Handle PWA and Browser modes (Token prompting)
+    if (isPWA || status.mode === "browser") {
       el.textContent = status.configured
         ? `GitHub publishing is on (${platformText}): ${status.owner}/${status.repo} (${status.branch} branch). Saves commit straight to GitHub.`
         : `You'll be asked to paste a GitHub token the first time you save from the ${platformText}.`;
+      return; // Exit here so the local logic below doesn't run
     }
-  });
 
-    const el = document.getElementById("publishConfigNote");
-    if (!el) return;
-    if (status.mode === "browser") {
-      el.textContent = status.configured
-        ? `GitHub publishing is on: ${status.owner}/${status.repo} (${status.branch} branch). Saves commit straight to GitHub; ARML rebuilds automatically within a few minutes.`
-        : "You'll be asked to paste a GitHub token the first time you save.";
-      return;
-    }
+    // Handle Local mode
     if (!status.enabled) {
       el.textContent = "GitHub publishing is off - resources save locally only. See config.json to turn it on.";
     } else if (!status.configured) {
