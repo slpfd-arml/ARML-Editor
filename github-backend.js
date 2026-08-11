@@ -516,7 +516,7 @@ async function checkConnection() {
       // 404 rather than 403 is what GitHub returns for a repo the token
       // can't see at all - indistinguishable from "doesn't exist" by
       // design, so say both rather than guessing wrong.
-      return { state: "error", message: `Can't see ${GITHUB_OWNER}/${GITHUB_REPO} — wrong repo name, or the token has no access to it.` };
+      return { state: "error", message: `Can't see ${GITHUB_REPO} — wrong repo name, or the token has no access to it.` };
     }
     if (!res.ok) {
       return { state: "error", message: `GitHub returned ${res.status}. Saving may fail.` };
@@ -527,7 +527,7 @@ async function checkConnection() {
     if (!canPush) {
       return { state: "error", message: "Token is read-only — it can load resources but Save will fail. Needs write access." };
     }
-    return { state: "ok", message: `Connected to ${GITHUB_OWNER}/${GITHUB_REPO} — ready to save.` };
+    return { state: "ok", message: `Connected to ${GITHUB_REPO} — ready to save.` };
   } catch (err) {
     // A network-level throw here (rather than an HTTP status) is the
     // signature of api.github.com being unreachable - offline, or
