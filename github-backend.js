@@ -55,9 +55,7 @@ function getToken() {
 
 function promptForToken() {
   const token = window.prompt(
-    "Paste your GitHub Personal Access Token to enable saving.\n\n" +
-    "This is stored only in this browser (localStorage) and is sent " +
-    "only to api.github.com - never committed, never logged."
+    "Paste your GitHub Personal Access Token to enable saving.\n\n"
   );
   if (token && token.trim()) {
     localStorage.setItem("arml_editor_token", token.trim());
