@@ -39,53 +39,79 @@ ARML Editor  →  New_ARM_Library.xlsx  →  build-data.js  →  data.js  →  t
 Everything the tool does — add, edit, delete, attach a PDF — ends as a
 change to that one workbook, committed to the ARML repo. A build step then
 turns the workbook into the app's data. **Where that build runs is the only
-real difference between the two modes below.**
+real difference between local mode and the two web modes below.**
 
 ---
 
-## 2. Two ways to run it
+## 2. Three ways to run it
 
-Both modes edit the same workbook in the same repo and produce identical
+All three edit the same workbook in the same repo and produce identical
 results on medics' devices. Pick based on what the machine and network
 allow, not on preference.
 
-| | **Browser mode** (recommended) | **Local mode** |
-|---|---|---|
-| How you open it | The live URL above, in Chrome or Edge | Double-click `start-ARML-editor.bat` |
-| Needs Node.js installed? | **No** | Yes (or the portable copy — see below) |
-| Where the GitHub token lives | Your browser only (`localStorage`) | `config.json` on that machine |
-| Who runs `build-data.js` | GitHub, automatically | Your own machine, on every save |
-| Attach PDFs | Yes | Yes |
-| "Export update bundle" | No | Yes |
-| Works with no internet | No | Partially (saves locally, can't publish) |
+| | **Installed app (PWA)** (recommended) | **Browser tab** | **Local mode** |
+|---|---|---|---|
+| How you open it | Desktop / taskbar icon | The live URL, in Chrome or Edge | Double-click `start-ARML-editor.bat` |
+| Needs Node.js installed? | **No** | **No** | Yes (or the portable copy) |
+| Where the GitHub token lives | Browser storage (`localStorage`) | Browser storage (`localStorage`) | `config.json` on that machine |
+| Who runs `build-data.js` | GitHub, automatically | GitHub, automatically | Your own machine, on every save |
+| Attach PDFs | Yes | Yes | Yes |
+| "Export update bundle" | No | No | Yes |
+| Version tag reads | `(PWA)` | `(browser)` | `(local)` |
 
-**Browser mode is the recommended path** and the reason this tool was
-rebuilt: it removes every dependency that a City IT environment is likely
-to block — no `.exe`, no Node.js install, no local server, no admin rights.
-It's a webpage.
+The tool detects which one it's in automatically at load, and the version
+line in the header tells you which.
 
-**Local mode still exists on purpose.** If GitHub's API is ever blocked at
-the firewall while normal web browsing still works, local mode plus the
-"Export update bundle" button is the fallback that keeps the tool usable.
-It is not deprecated.
+### Installed app (PWA) — recommended
 
-The tool detects which mode it's in automatically at load. The version line
-in the header says which — `(browser)`, `(PWA)`, or `(local)`.
+Open the live URL in Chrome or Edge and click the install icon in the
+address bar (or `⋮` → "Install ARML Editor"). You get a normal desktop and
+taskbar icon that opens the tool in its own window with no address bar,
+tabs, or back button — the same result the old `.bat` shortcut gave, with
+nothing installed and no admin rights.
+
+**Under the hood it is the same web app as a browser tab**, same origin and
+same code. The differences are practical rather than architectural:
+
+- **Launching** — an icon instead of a bookmark or typed URL.
+- **No browser chrome** — which also means no reload button. If you ever
+  need to force a refresh, use `Ctrl`+`R` (or `Ctrl`+`Shift`+`R` to bypass
+  cache). Worth knowing before you need it, since the usual button isn't
+  there.
+- **Same browser profile** — an installed PWA runs inside the browser it
+  was installed from, so it normally shares that browser's storage for the
+  same site. In practice a token entered in one is usually already there in
+  the other. Don't rely on that: if it prompts, just paste the token again.
+  It's stored per browser profile either way, so a different browser, a
+  different Windows user, or a different machine always needs its own.
+
+### Browser tab
+
+Identical in every functional respect — same features, same token, same
+save path. Use it if you'd rather not install anything, or on a machine you
+only touch occasionally.
+
+Both of the above are the reason this tool was rebuilt: they remove every
+dependency a City IT environment is likely to block — no `.exe`, no Node.js
+install, no local server, no admin rights. It's a webpage.
+
+### Local mode
+
+Kept on purpose as a fallback. If GitHub's API is ever blocked at the
+firewall while ordinary web browsing still works, local mode plus the
+"Export update bundle" button is what keeps the tool usable. It's also the
+only mode that can export a bundle at all. **Not deprecated.**
+
+Its practical differences run deeper than PWA-vs-tab: the token lives in a
+file rather than the browser, and the build runs on your own machine at
+save time rather than on GitHub afterward.
 
 ---
 
-## 3. Browser mode: first-time setup
+## 3. First-time setup: the GitHub token
 
-### Install it as an app (optional but recommended)
-
-Open the live URL in Chrome or Edge and click the install icon in the
-address bar (or `⋮` → "Install ARML Editor"). It opens in its own window
-with no browser chrome and gets a normal desktop/taskbar icon — the same
-thing the old `.bat` shortcut did, with nothing to install.
-
-Skipping this is fine. The tool works identically as a regular browser tab.
-
-### Give it a GitHub token
+**Applies to the installed app and the browser tab alike** — they share the
+same token store. (Local mode uses `config.json` instead; see section 7.)
 
 The first time you open it, it asks for a GitHub Personal Access Token.
 Without one it can read nothing and save nothing.
@@ -104,10 +130,12 @@ never sent anywhere except `api.github.com`.
 exposed, revoke it on GitHub immediately and generate a new one. Clicking
 the connection light (below) lets you paste in the replacement.
 
-**Each person and each browser needs their own token.** That's a
-consequence of storing it browser-side rather than in a shared file, and
-it's the safer arrangement: revoking one person's access doesn't disturb
-anyone else's.
+**Each browser profile needs its own token.** The installed app and a
+browser tab on the same machine normally share one, since they're the same
+profile — but a different browser, a different Windows user, or a different
+machine each needs its own. That's a consequence of storing it browser-side
+rather than in a shared file, and it's the safer arrangement: revoking one
+person's access doesn't disturb anyone else's.
 
 ---
 
@@ -190,7 +218,7 @@ message saying so.
 
 This is the part worth understanding, because it explains the delay.
 
-**Browser mode:**
+**Installed app or browser tab (identical paths):**
 1. Editor commits the updated workbook to the ARML repo
 2. A GitHub Action (`.github/workflows/rebuild-on-workbook-change.yml` in
    the **ARML** repo) notices the workbook changed and runs `build-data.js`
@@ -219,7 +247,8 @@ open the failed run to see why.
 
 ## 7. Local mode setup
 
-Only needed if browser mode is blocked or you need "Export update bundle."
+Only needed if the web versions are blocked, or you need "Export update
+bundle."
 
 `start-ARML-editor.bat` needs Node.js. It checks `node-portable/` first and
 falls back to a system-wide install.
@@ -250,7 +279,7 @@ publishes to. **Do not remove that line.**
 | `index.html`, `styles.css` | The tool's interface |
 | `form.js` | All form behavior — validation, duplicate detection, modals, connection light |
 | `data-layer.js` | Detects browser vs. local mode and routes every call accordingly |
-| `github-backend.js` | Browser mode: talks to the GitHub API directly |
+| `github-backend.js` | Web modes (installed app / browser tab): talks to the GitHub API directly |
 | `server.js`, `publish.js` | Local mode only: the small Express server and its GitHub push logic |
 | `config.json` | Local mode settings. Holds a token when configured — **gitignored, never commit a real one** |
 | `service-worker.js` | Offline caching + PWA installability |
@@ -311,6 +340,17 @@ the ARML repo as a zip from GitHub (**Code → Download ZIP**).
 
 **A PDF won't attach.**
 Over 25 MB, or the token lacks write access. The error says which.
+
+**The installed app looks stale, or I need to reload it and there's no
+reload button.**
+`Ctrl`+`R` refreshes; `Ctrl`+`Shift`+`R` bypasses cache. The service worker
+is network-first, so a plain reload is normally enough to pick up the
+newest version of the tool.
+
+**The installed app won't open / the icon is gone.**
+Nothing is lost — the token and all data live in the browser profile, not
+the installed shortcut. Open the live URL in Chrome or Edge and re-install
+from the address bar. Everything should still be there.
 
 **Nothing loads at all; the resource list is empty.**
 Almost always the token. An amber or red light confirms it.
