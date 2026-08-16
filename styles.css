@@ -449,6 +449,57 @@ textarea {
 }
 
 /* ============================================================
+   EXTERNAL LINKS (Files & External Links section) - the "Add Link" row
+   reuses .file-row/.file-name/.file-remove for the picked-link list, same
+   as the file picker above it.
+   ============================================================ */
+.link-add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+.link-add-row input {
+  flex: 1;
+}
+
+.link-add-row .btn-secondary {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+/* ============================================================
+   SUB-CONTACTS ("Related Contacts")
+   ============================================================ */
+.sub-contact-fieldset {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.sub-contact-fieldset-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.sub-contact-fieldset-header strong {
+  color: var(--accent-soft);
+}
+
+.sub-contact-fieldset-header .btn-secondary {
+  margin: 0;
+}
+
+.sub-contact-fieldset label {
+  margin-bottom: 8px;
+}
+
+/* ============================================================
    DELETE
    ============================================================ */
 .btn-danger {

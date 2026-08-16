@@ -88,7 +88,7 @@ function switchToAddMode() {
   submitBtn.textContent = "Save Resource";
   deleteBtn.hidden = true;
   existingFilesSection.hidden = true;
-  filesHeading.textContent = "Files";
+  filesHeading.textContent = "Files & External Links";
   resetFormFields();
   form.hidden = false;
 }
@@ -179,10 +179,13 @@ function loadResourceIntoForm(resource) {
   });
 
   originalNameField.value = resource.name;
-  keptExistingFiles = resource.files.map(f => ({ ...f }));
+  keptExistingItems = resource.files.map(f => ({ ...f }));
   renderExistingFileRows();
-  existingFilesSection.hidden = keptExistingFiles.length === 0;
-  filesHeading.textContent = "Add More Files";
+  existingFilesSection.hidden = keptExistingItems.length === 0;
+  filesHeading.textContent = "Add More Files & Links";
+
+  subContactRows.innerHTML = "";
+  (resource.subContacts || []).forEach(sc => addSubContactFieldset(sc));
 
   pageTitle.textContent = `Editing: ${resource.name}`;
   pageSubtitle.textContent = "Changes save directly to the workbook and push to ARML.";
@@ -195,28 +198,34 @@ function loadResourceIntoForm(resource) {
   hideStatus();
 }
 
-/* ---------- EXISTING FILES (edit mode) ----------
-   Removing here only unlinks the file from THIS resource - see the
+/* ---------- EXISTING FILES & LINKS (edit mode) ----------
+   Removing a file here only unlinks it from THIS resource - see the
    in-page hint and the server-side comment in server.js for why the
-   physical PDF is deliberately never deleted from this flow. */
-let keptExistingFiles = [];
+   physical PDF is deliberately never deleted from this flow. Removing a
+   link just drops it - there's no underlying asset to preserve. Mixed
+   list: each item carries a "type" of "file" or "link". */
+let keptExistingItems = [];
 
 function renderExistingFileRows() {
   existingFileRows.innerHTML = "";
-  keptExistingFiles.forEach((f, i) => {
+  keptExistingItems.forEach((item, i) => {
     const row = document.createElement("div");
     row.className = "existing-file-row";
 
     const name = document.createElement("span");
     name.className = "file-name";
-    name.textContent = f.label && f.label !== f.filename ? `${f.label} (${f.filename})` : f.filename;
+    if (item.type === "link") {
+      name.textContent = item.label && item.label !== item.url ? `${item.label} (${item.url})` : item.url;
+    } else {
+      name.textContent = item.label && item.label !== item.filename ? `${item.label} (${item.filename})` : item.filename;
+    }
 
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "file-remove";
     remove.textContent = "Remove";
     remove.addEventListener("click", () => {
-      keptExistingFiles.splice(i, 1);
+      keptExistingItems.splice(i, 1);
       renderExistingFileRows();
       syncExistingFilesField();
     });
@@ -229,7 +238,7 @@ function renderExistingFileRows() {
 }
 
 function syncExistingFilesField() {
-  existingFilesField.value = JSON.stringify(keptExistingFiles);
+  existingFilesField.value = JSON.stringify(keptExistingItems);
 }
 
 /* ---------- TAG-CHIP INPUTS (Keywords, Service Tags) ---------- */
@@ -333,6 +342,153 @@ function renderFileRows() {
     row.appendChild(remove);
     fileRows.appendChild(row);
   });
+}
+
+/* ---------- EXTERNAL LINK PICKER (newly added links, both modes) ----------
+   Same "https:// gets added automatically" convention as the Website
+   field above, for consistency. */
+const linkLabelInput = document.getElementById("linkLabelInput");
+const linkUrlInput = document.getElementById("linkUrlInput");
+const addLinkBtn = document.getElementById("addLinkBtn");
+const linkRows = document.getElementById("linkRows");
+let pickedLinks = [];
+
+function normalizeUrlInput(str) {
+  const cleaned = str.trim();
+  if (!cleaned) return "";
+  if (/^[a-z][a-z0-9+.-]*:/i.test(cleaned)) return cleaned;
+  return "https://" + cleaned;
+}
+
+function addPickedLink() {
+  const url = normalizeUrlInput(linkUrlInput.value);
+  if (!url) {
+    linkUrlInput.focus();
+    return;
+  }
+  pickedLinks.push({ label: linkLabelInput.value.trim(), url });
+  linkLabelInput.value = "";
+  linkUrlInput.value = "";
+  renderLinkRows();
+  linkLabelInput.focus();
+}
+
+addLinkBtn.addEventListener("click", addPickedLink);
+[linkLabelInput, linkUrlInput].forEach(input => {
+  input.addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    addPickedLink();
+  });
+});
+
+function renderLinkRows() {
+  linkRows.innerHTML = "";
+  pickedLinks.forEach((link, i) => {
+    const row = document.createElement("div");
+    row.className = "file-row";
+
+    const name = document.createElement("span");
+    name.className = "file-name";
+    name.textContent = link.label ? `${link.label} — ${link.url}` : link.url;
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "file-remove";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => {
+      pickedLinks.splice(i, 1);
+      renderLinkRows();
+    });
+
+    row.appendChild(name);
+    row.appendChild(remove);
+    linkRows.appendChild(row);
+  });
+}
+
+/* ---------- SUB-CONTACTS (Related Contacts) ----------
+   Each fieldset is plain DOM, values live in the inputs themselves (never
+   mirrored into a JS array on every keystroke) - the same approach the
+   file-label inputs above already use. That matters here more than there:
+   re-rendering the whole list on every keystroke (the tag-input approach)
+   would steal focus out from under whichever field someone's mid-sentence
+   in. Add/Remove are the only things that touch DOM structure; typing
+   never does. */
+const subContactRows = document.getElementById("subContactRows");
+const addSubContactBtn = document.getElementById("addSubContactBtn");
+
+const SUB_CONTACT_FIELDS = [
+  { key: "name", label: "Sub-Contact Name", required: true },
+  { key: "category", label: "Category" },
+  { key: "audience", label: "Audience" },
+  { key: "purpose", label: "Services / Purpose", multiline: true },
+  { key: "phone", label: "Phone" },
+  { key: "email", label: "Email", type: "email" },
+  { key: "website", label: "Website", placeholder: "example.org" },
+  { key: "location", label: "Location" },
+  { key: "hours", label: "Hours / Availability" },
+  { key: "access", label: "Access Instructions", multiline: true },
+  { key: "notes", label: "Notes", multiline: true },
+  { key: "source", label: "Source" }
+];
+
+function addSubContactFieldset(data) {
+  data = data || {};
+  const wrapper = document.createElement("div");
+  wrapper.className = "sub-contact-fieldset";
+
+  const header = document.createElement("div");
+  header.className = "sub-contact-fieldset-header";
+  const title = document.createElement("strong");
+  title.textContent = "Sub-Contact";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "btn-secondary";
+  remove.textContent = "Remove";
+  remove.addEventListener("click", () => wrapper.remove());
+  header.appendChild(title);
+  header.appendChild(remove);
+  wrapper.appendChild(header);
+
+  SUB_CONTACT_FIELDS.forEach(field => {
+    const label = document.createElement("label");
+    label.textContent = field.label + " ";
+    if (field.required) {
+      const req = document.createElement("span");
+      req.className = "required";
+      req.textContent = "*";
+      label.appendChild(req);
+    }
+    label.appendChild(document.createElement("br"));
+
+    const input = document.createElement(field.multiline ? "textarea" : "input");
+    input.className = "sc-" + field.key;
+    if (!field.multiline) input.type = field.type || "text";
+    if (field.placeholder) input.placeholder = field.placeholder;
+    input.value = data[field.key] || "";
+    label.appendChild(input);
+
+    wrapper.appendChild(label);
+  });
+
+  subContactRows.appendChild(wrapper);
+}
+
+addSubContactBtn.addEventListener("click", () => addSubContactFieldset());
+
+// Fieldsets left completely blank (added, then never filled in) are
+// dropped rather than saved as an empty sub-contact card.
+function collectSubContacts() {
+  return Array.from(subContactRows.querySelectorAll(".sub-contact-fieldset"))
+    .map(el => {
+      const sc = {};
+      SUB_CONTACT_FIELDS.forEach(field => {
+        sc[field.key] = el.querySelector(".sc-" + field.key).value.trim();
+      });
+      return sc;
+    })
+    .filter(sc => sc.name);
 }
 
 /* ---------- FUZZY DUPLICATE DETECTION ----------
@@ -472,9 +628,12 @@ function resetFormFields() {
   form.reset();
   pickedFiles = [];
   renderFileRows();
-  keptExistingFiles = [];
+  pickedLinks = [];
+  renderLinkRows();
+  keptExistingItems = [];
   existingFilesField.value = "[]";
   existingFileRows.innerHTML = "";
+  subContactRows.innerHTML = "";
   document.querySelectorAll(".tag-input").forEach(wrapper => wrapper._setValues([]));
   originalNameField.value = "";
   isExactDuplicate = false;
@@ -530,6 +689,8 @@ async function performSave() {
     document.querySelectorAll(".file-label").forEach(input => {
       formData.append("fileLabels", input.value.trim());
     });
+    formData.append("newLinks", JSON.stringify(pickedLinks));
+    formData.append("subContacts", JSON.stringify(collectSubContacts()));
 
     const out = mode === "edit"
       ? await DataLayer.updateResource(formData)

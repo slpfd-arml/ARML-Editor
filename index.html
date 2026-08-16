@@ -159,18 +159,32 @@
         </label>
       </section>
 
+      <section class="section" id="subContactsSection">
+        <h2>Related Contacts (Sub-Contacts)</h2>
+        <p class="hint">Individual programs, offices, or contacts under this resource, shown in their own "Related Contacts" section on the card - the way CAP-HC lists each of its assistance programs.</p>
+        <div id="subContactRows"></div>
+        <button type="button" id="addSubContactBtn" class="btn-secondary">+ Add Sub-Contact</button>
+      </section>
+
       <section class="section" id="existingFilesSection" hidden>
-        <h2>Currently Attached Files</h2>
-        <p class="hint">Removing one here only unlinks it from this resource - it doesn't delete the file itself, since the same PDF can be used by more than one resource.</p>
+        <h2>Currently Attached Files &amp; Links</h2>
+        <p class="hint">Removing a file here only unlinks it from this resource - it doesn't delete the file itself, since the same PDF can be used by more than one resource. Removing a link just removes it from this resource.</p>
         <div id="existingFileRows"></div>
       </section>
 
       <section class="section">
-        <h2 id="filesHeading">Files</h2>
-        <p class="hint">Upload files from your computer.</p>
+        <h2 id="filesHeading">Files &amp; External Links</h2>
+        <p class="hint">Upload files from your computer, or add a link to an external website (other than the main Website field above).</p>
 
         <input type="file" id="fileInput" accept="application/pdf" multiple />
         <div id="fileRows"></div>
+
+        <div class="link-add-row">
+          <input type="text" id="linkLabelInput" placeholder="Link name (e.g. Apply Online)" autocomplete="off" />
+          <input type="text" id="linkUrlInput" placeholder="example.org/apply" autocomplete="off" />
+          <button type="button" id="addLinkBtn" class="btn-secondary">Add Link</button>
+        </div>
+        <div id="linkRows"></div>
       </section>
 
       <button type="submit" class="btn-primary" id="submitBtn">Save Resource</button>

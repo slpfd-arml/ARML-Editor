@@ -13,7 +13,7 @@ const app = express();
 // with its own history. Bump this by hand following the same semver
 // logic ARML itself uses: patch = fixes, minor = new features, major =
 // a fundamental change to how the tool works.
-const EDITOR_VERSION = "1.2.0";
+const EDITOR_VERSION = "1.3.0";
 
 // Everything is served from this same Express app (this file, index.html,
 // form.js, styles.css) on one origin. That's deliberate: if index.html were
@@ -120,26 +120,54 @@ function mergeLegacyTags(keywordsRaw, serviceTagsRaw) {
   return merged;
 }
 
+// Mirrors ARM-Builder/build-data.js's parseFiles() marker scheme: a
+// trailing "|link" tags an entry as an external URL rather than a
+// filename to resolve under /Assets. "|fillable"/"|inapp" are build-time-
+// only overrides this tool doesn't set itself, but a hand-added one on an
+// existing entry is preserved verbatim on the next save rather than
+// silently dropped.
 function parseFilesField(str) {
   return String(str || "")
     .split(";")
     .map(s => s.trim())
     .filter(Boolean)
     .map(entry => {
-      const pipeIdx = entry.indexOf("|");
-      return pipeIdx === -1
-        ? { label: entry, filename: entry }
-        : { label: entry.slice(0, pipeIdx).trim(), filename: entry.slice(pipeIdx + 1).trim() };
+      let parts = entry.split("|").map(s => s.trim()).filter(s => s !== "");
+      let marker = null;
+      const last = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
+      if (last === "link" || last === "fillable" || last === "inapp") {
+        marker = last;
+        parts = parts.slice(0, -1);
+      }
+      const label = parts.length > 1 ? parts[0] : "";
+      const target = parts.length > 1 ? parts[parts.length - 1] : parts[0];
+
+      if (marker === "link") {
+        return { type: "link", label: label || target, url: target };
+      }
+      return { type: "file", label: label || target, filename: target, marker: marker || null };
     });
 }
 
-function buildFilesValue(keptFiles, newFiles, newLabels) {
-  const keptPart = keptFiles.map(f => (f.label && f.label !== f.filename ? `${f.label}|${f.filename}` : f.filename));
-  const newPart = (newFiles || []).map((f, i) => {
+function buildFilesValue(keptItems, newFiles, newLabels, newLinks) {
+  const keptPart = keptItems.map(item => {
+    if (item.type === "link") {
+      const base = item.label && item.label !== item.url ? `${item.label}|${item.url}` : item.url;
+      return `${base}|link`;
+    }
+    const base = item.label && item.label !== item.filename ? `${item.label}|${item.filename}` : item.filename;
+    return item.marker ? `${base}|${item.marker}` : base;
+  });
+  const newFilesPart = (newFiles || []).map((f, i) => {
     const label = (newLabels[i] || "").trim();
     return label ? `${label}|${f.filename}` : f.filename;
   });
-  return [...keptPart, ...newPart].join("; ");
+  const newLinksPart = (newLinks || []).map(l => {
+    const label = (l.label || "").trim();
+    const url = (l.url || "").trim();
+    return `${label && label !== url ? `${label}|${url}` : url}|link`;
+  });
+  return [...keptPart, ...newFilesPart, ...newLinksPart].join("; ");
 }
 
 function rowFromBody(body, filesValue) {
@@ -212,6 +240,10 @@ function readRows() {
   return { wb, rows };
 }
 
+// Only mutates wb.Sheets["Resource List"] in memory - does NOT write to
+// disk. Callers write once, via saveWorkbook(), after every sheet this
+// request touches (Resource List + possibly a sub-contact sheet) has been
+// updated, so a save can never land half-written.
 function writeRows(wb, rows) {
   const header = rows.length
     ? Object.keys(rows[0])
@@ -219,7 +251,149 @@ function writeRows(wb, rows) {
        "Contact Person","Email Address","Phone","Alternate Phone","Fax","Alternate Fax","TTY",
        "Website","Street Address","Notes","Hours","Keywords","Files","Broad Category","Service Tags"];
   wb.Sheets["Resource List"] = XLSX.utils.json_to_sheet(rows, { header });
+}
+
+function saveWorkbook(wb) {
   XLSX.writeFile(wb, WORKBOOK_PATH);
+}
+
+/* ============================================================
+   SUB-CONTACTS ("Related Contacts")
+   Live in their own worksheet(s), one row per sub-contact, joined back to
+   a resource by an exact "Parent Resource" name match - the same shape
+   CAP-HC Contacts and (formerly) St Stephens Contacts were hand-authored
+   in. ARM-Builder/build-data.js auto-discovers any sheet shaped this way
+   (see its own matching comment), so a sheet created here just works on
+   the ARML side with no further wiring.
+   ============================================================ */
+const CORE_SHEET_NAMES = new Set(["Read Me", "Resource List", "Release of Information", "Screening Tools"]);
+const SUB_CONTACT_COLUMNS = [
+  "Parent Resource", "Sub-Contact Name", "Category", "Audience", "Services / Purpose",
+  "Phone", "Email", "Website", "Location", "Hours / Availability", "Access Instructions",
+  "Notes", "Source"
+];
+const SUB_CONTACT_KEY_TO_COLUMN = {
+  name: "Sub-Contact Name", category: "Category", audience: "Audience", purpose: "Services / Purpose",
+  phone: "Phone", email: "Email", website: "Website", location: "Location",
+  hours: "Hours / Availability", access: "Access Instructions", notes: "Notes", source: "Source"
+};
+const SUB_CONTACT_COLUMN_TO_KEY = Object.fromEntries(
+  Object.entries(SUB_CONTACT_KEY_TO_COLUMN).map(([k, v]) => [v, k])
+);
+
+function findSubContactSheetNames(wb) {
+  return wb.SheetNames.filter(name => {
+    if (CORE_SHEET_NAMES.has(name)) return false;
+    if (!wb.Sheets[name]) return false;
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: "" });
+    return aoa.some(r => String(r[0] || "").trim() === "Parent Resource");
+  });
+}
+
+// Maps every resource name that has sub-contacts to { sheetName, items }.
+// Scans each sub-contact sheet exactly once regardless of how many
+// resources' rows it holds.
+function readAllSubContacts(wb) {
+  const map = new Map();
+  findSubContactSheetNames(wb).forEach(sheetName => {
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: "" });
+    const headerRowIdx = aoa.findIndex(r => String(r[0] || "").trim() === "Parent Resource");
+    if (headerRowIdx === -1) return;
+    const headers = aoa[headerRowIdx].map(h => String(h || "").trim());
+    aoa.slice(headerRowIdx + 1).forEach(rowArr => {
+      if (!rowArr.some(c => String(c || "").trim())) return;
+      const row = {};
+      headers.forEach((h, i) => { if (h) row[h] = rowArr[i]; });
+      const parentName = String(row["Parent Resource"] || "").trim();
+      if (!parentName) return;
+      if (!map.has(parentName)) map.set(parentName, { sheetName, items: [] });
+      map.get(parentName).items.push({
+        name: String(row["Sub-Contact Name"] || "").trim(),
+        category: String(row["Category"] || "").trim(),
+        audience: String(row["Audience"] || "").trim(),
+        purpose: String(row["Services / Purpose"] || "").trim(),
+        phone: String(row["Phone"] || "").trim(),
+        email: String(row["Email"] || "").trim(),
+        website: String(row["Website"] || "").trim(),
+        location: String(row["Location"] || "").trim(),
+        hours: String(row["Hours / Availability"] || "").trim(),
+        access: String(row["Access Instructions"] || "").trim(),
+        notes: String(row["Notes"] || "").trim(),
+        source: String(row["Source"] || "").trim()
+      });
+    });
+  });
+  return map;
+}
+
+// Valid, unique Excel sheet name for a brand new sub-contact sheet -
+// "<Resource Name> Contacts", stripped of characters Excel disallows in
+// sheet names and truncated to fit the 31-char limit.
+function subContactSheetName(resourceName, wb) {
+  const suffix = " Contacts";
+  const maxBase = 31 - suffix.length;
+  let base = String(resourceName || "").replace(/[:\\/?*[\]]/g, "").trim() || "Resource";
+  if (base.length > maxBase) base = base.slice(0, maxBase).trim();
+
+  const taken = new Set(wb.SheetNames);
+  let candidate = `${base}${suffix}`;
+  let n = 2;
+  while (taken.has(candidate)) {
+    const numSuffix = ` ${n}`;
+    candidate = `${base.slice(0, Math.max(0, maxBase - numSuffix.length))}${suffix}${numSuffix}`;
+    n++;
+  }
+  return candidate;
+}
+
+// Replaces whatever sub-contact rows a resource currently has (found by
+// ORIGINAL name, so a rename moves the rows rather than orphaning them)
+// with a fresh set written under its current name. Rows belonging to
+// other resources that happen to share the same sheet are read and
+// rewritten untouched. An empty new list removes the resource's rows -
+// deleting the whole sheet if nothing else is left in it.
+function upsertSubContacts(wb, originalName, newName, subContacts) {
+  const lookupName = originalName || newName;
+  const map = readAllSubContacts(wb);
+  const mine = map.get(lookupName);
+  const existingSheetName = mine ? mine.sheetName : null;
+
+  const otherRows = [];
+  if (existingSheetName) {
+    for (const [parentName, entry] of map.entries()) {
+      if (entry.sheetName !== existingSheetName || parentName === lookupName) continue;
+      entry.items.forEach(it => {
+        otherRows.push(SUB_CONTACT_COLUMNS.map(col =>
+          col === "Parent Resource" ? parentName : (it[SUB_CONTACT_COLUMN_TO_KEY[col]] || "")
+        ));
+      });
+    }
+  }
+
+  const newRows = subContacts.map(sc => SUB_CONTACT_COLUMNS.map(col =>
+    col === "Parent Resource" ? newName : (sc[SUB_CONTACT_COLUMN_TO_KEY[col]] || "")
+  ));
+
+  const allDataRows = [...otherRows, ...newRows];
+
+  if (allDataRows.length === 0) {
+    if (existingSheetName) {
+      delete wb.Sheets[existingSheetName];
+      wb.SheetNames = wb.SheetNames.filter(n => n !== existingSheetName);
+    }
+    return;
+  }
+
+  const sheetName = existingSheetName || subContactSheetName(newName, wb);
+  const aoaOut = [
+    [`${newName} — Sub-Contact Cards`],
+    [`Each row is a related contact, viewable under the parent ${newName} resource.`],
+    [],
+    SUB_CONTACT_COLUMNS,
+    ...allDataRows
+  ];
+  wb.Sheets[sheetName] = XLSX.utils.aoa_to_sheet(aoaOut);
+  if (!wb.SheetNames.includes(sheetName)) wb.SheetNames.push(sheetName);
 }
 
 app.get("/resource-names", (req, res) => {
@@ -236,7 +410,8 @@ app.get("/resource-names", (req, res) => {
    filter client-side rather than building a search endpoint. */
 app.get("/resources", (req, res) => {
   try {
-    const { rows } = readRows();
+    const { wb, rows } = readRows();
+    const subContactsMap = readAllSubContacts(wb);
     const resources = rows
       .filter(r => r["Resource Name"])
       .map(r => ({
@@ -257,7 +432,8 @@ app.get("/resources", (req, res) => {
         notes: r["Notes"] || "",
         hours: r["Hours"] || "",
         keywords: mergeLegacyTags(r["Keywords"], r["Service Tags"]),
-        files: parseFilesField(r["Files"])
+        files: parseFilesField(r["Files"]),
+        subContacts: (subContactsMap.get(r["Resource Name"]) || { items: [] }).items
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
     res.json({ resources });
@@ -287,10 +463,17 @@ app.post("/add", upload.array("files"), (req, res) => {
     }
 
     const fileLabels = toArray(body.fileLabels);
-    const filesValue = buildFilesValue([], req.files || [], fileLabels);
+    let newLinks = [];
+    try { newLinks = JSON.parse(body.newLinks || "[]"); } catch { newLinks = []; }
+    const filesValue = buildFilesValue([], req.files || [], fileLabels, newLinks);
+
+    let subContacts = [];
+    try { subContacts = JSON.parse(body.subContacts || "[]"); } catch { subContacts = []; }
 
     rows.push(rowFromBody(body, filesValue));
     writeRows(wb, rows);
+    upsertSubContacts(wb, null, name, subContacts);
+    saveWorkbook(wb);
 
     runBuildAndPublish(res, name, `Add resource: ${name}`, req.files, "saved");
   } catch (err) {
@@ -336,14 +519,21 @@ app.post("/update", upload.array("files"), (req, res) => {
       }
     }
 
-    let keptFiles = [];
-    try { keptFiles = JSON.parse(body.existingFiles || "[]"); } catch { keptFiles = []; }
+    let keptItems = [];
+    try { keptItems = JSON.parse(body.existingFiles || "[]"); } catch { keptItems = []; }
 
     const fileLabels = toArray(body.fileLabels);
-    const filesValue = buildFilesValue(keptFiles, req.files || [], fileLabels);
+    let newLinks = [];
+    try { newLinks = JSON.parse(body.newLinks || "[]"); } catch { newLinks = []; }
+    const filesValue = buildFilesValue(keptItems, req.files || [], fileLabels, newLinks);
+
+    let subContacts = [];
+    try { subContacts = JSON.parse(body.subContacts || "[]"); } catch { subContacts = []; }
 
     rows[rowIndex] = rowFromBody(body, filesValue);
     writeRows(wb, rows);
+    upsertSubContacts(wb, originalName, name, subContacts);
+    saveWorkbook(wb);
 
     const commitMsg = name === originalName ? `Edit resource: ${name}` : `Edit resource: ${originalName} -> ${name}`;
     runBuildAndPublish(res, name, commitMsg, req.files, "updated");
@@ -376,6 +566,8 @@ app.post("/delete", (req, res) => {
 
     rows.splice(rowIndex, 1);
     writeRows(wb, rows);
+    upsertSubContacts(wb, name, name, []);
+    saveWorkbook(wb);
 
     runBuildAndPublish(res, name, `Delete resource: ${name}`, [], "deleted");
   } catch (err) {
