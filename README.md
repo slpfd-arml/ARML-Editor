@@ -85,6 +85,16 @@ same code. The differences are practical rather than architectural:
   It's stored per browser profile either way, so a different browser, a
   different Windows user, or a different machine always needs its own.
 
+**Does the installed app update itself?** Yes, automatically, with nothing
+to click. Unlike ARML's own PWA (which is cache-first, on purpose, so a
+medic offline isn't stuck without the app), this tool's service worker is
+network-first — every load fetches the live code first and only falls back
+to a cached copy if the network is unreachable. The next time you open or
+reload the installed app after a new version ships, it's already running
+the new version, no "update available" prompt or version-bump wait
+involved. If it ever looks stale, `Ctrl`+`R` (or `Ctrl`+`Shift`+`R`) forces
+a fresh load — see section 9 for the mechanics.
+
 ### Browser tab
 
 Identical in every functional respect — same features, same token, same
@@ -199,18 +209,50 @@ ARML Editor tries to catch likely mistakes before they become data:
 - **Delete** — requires typing the exact resource name. There is no
   one-click delete and no undo.
 
-### Attaching PDFs
+### Files & External Links
 
-Attach them in the form; they're committed to `Assets/` in the ARML repo
-automatically. Filename collisions are handled by appending `-2`, `-3`, and
-so on rather than overwriting an existing file.
+The "Files & External Links" section handles two different kinds of
+attachment, both shown together in the same order on the resource card:
 
-Removing a file from a resource in edit mode only **unlinks** it — the PDF
-itself stays in `Assets/`, because the same file is often used by more than
-one resource.
+- **Uploaded files** — attach a PDF in the form; it's committed to
+  `Assets/` in the ARML repo automatically. Filename collisions are
+  handled by appending `-2`, `-3`, and so on rather than overwriting an
+  existing file. Removing a file from a resource in edit mode only
+  **unlinks** it — the PDF itself stays in `Assets/`, because the same
+  file is often used by more than one resource. **Limit: 25 MB per
+  file**, rejected before upload with a message saying so.
+- **External links** — type a friendly name and a URL in the "Add Link"
+  row (`https://` is added automatically if you leave it off, same as
+  the Website field). Use this for things like an online application
+  form or a program's own page that isn't the resource's main website.
+  A link is removed the same way an existing file is — it just drops
+  the entry, there's nothing else to clean up.
 
-**Limit: 25 MB per file.** Larger files are rejected before upload with a
-message saying so.
+Both live in the same underlying workbook column as before, so an
+existing resource's files keep working exactly as they did.
+
+### Related Contacts (Sub-Contacts)
+
+Some resources are really an umbrella over several distinct programs or
+offices — CAP-HC is the model example: one parent listing, with each of
+its assistance programs (Energy Assistance, Rental Assistance, and so
+on) shown underneath as its own card with its own phone/email/hours.
+
+Click **+ Add Sub-Contact** in the "Related Contacts (Sub-Contacts)"
+section to add one. Only **Sub-Contact Name** is required — everything
+else (Category, Audience, Services/Purpose, Phone, Email, Website,
+Location, Hours, Access Instructions, Notes, Source) is optional. Add as
+many as the resource needs; click **Remove** on a fieldset to drop it. A
+fieldset left completely blank is dropped automatically rather than
+saved as an empty card.
+
+Editing a resource that already has sub-contacts prefills them from
+wherever they live in the workbook. Saving replaces that resource's rows
+in place: the first sub-contact added to a resource creates a new
+worksheet for it (named "`<Resource Name>` Contacts"), later saves reuse
+that same sheet, a rename moves the rows with it, and removing every
+sub-contact from a resource deletes the sheet if nothing else is left in
+it. None of this requires touching the workbook by hand.
 
 ---
 
@@ -387,6 +429,6 @@ than wait for the deadline.
 ## Version
 
 **Last updated:** August 2026
-**Version:** ARML Editor v1.2.0
+**Version:** ARML Editor v1.3.0
 **Hosting:** GitHub Pages
 **Status:** Ready for production
