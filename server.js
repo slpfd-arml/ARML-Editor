@@ -250,8 +250,13 @@ function readRows() {
 // request touches (Resource List + possibly a sub-contact sheet) has been
 // updated, so a save can never land half-written.
 function writeRows(wb, rows) {
+  // Union of every row's keys, not just rows[0]'s: rowFromBody() always
+  // produces the same fixed 19 keys, so if row 0 happens to be the one
+  // just rewritten by this save, taking its keys alone would silently
+  // drop any column beyond those 19 (e.g. a legacy or hand-added Excel
+  // column) from the ENTIRE sheet, not just that row.
   const header = rows.length
-    ? Object.keys(rows[0])
+    ? Array.from(rows.reduce((keys, row) => { Object.keys(row).forEach(k => keys.add(k)); return keys; }, new Set()))
     : ["Resource Name","Parent Organization/Agency","Organization Type","Services Provided",
        "Contact Person","Email Address","Phone","Alternate Phone","Fax","Alternate Fax","TTY",
        "Website","Street Address","Notes","Hours","Keywords","Files","Broad Category","Service Tags"];
@@ -611,8 +616,14 @@ app.get("/publish-status", (req, res) => {
 
 app.post("/publish", async (req, res) => {
   try {
-    const filesToPublish = ["data.js", "version.json", "assets-manifest.json", "service-worker.js"];
-    const result = await publisher.publish(ROOT, filesToPublish, "Manual republish");
+    // "Retry publish" sends back the exact paths that failed last time
+    // (including any Assets/<file>.pdf) - falling back to the base 4
+    // build files covers the no-context case, but would silently skip
+    // a still-failed asset push and report success if used for a retry.
+    const files = Array.isArray(req.body.files) && req.body.files.length
+      ? req.body.files
+      : ["data.js", "version.json", "assets-manifest.json", "service-worker.js"];
+    const result = await publisher.publish(ROOT, files, "Manual republish");
     res.json({ publish: result });
   } catch (err) {
     res.status(500).json({ error: "Publish failed: " + err.message });

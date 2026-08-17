@@ -455,7 +455,13 @@ function addSubContactFieldset(data) {
   remove.type = "button";
   remove.className = "btn-secondary";
   remove.textContent = "Remove";
-  remove.addEventListener("click", () => wrapper.remove());
+  remove.addEventListener("click", e => {
+    // Same same-spot double-click reflow hazard as the tag chips etc.:
+    // removing this fieldset lets the next one's Remove button slide into
+    // this screen spot, so a double-click here can delete two.
+    if (e.detail > 1) return;
+    wrapper.remove();
+  });
   header.appendChild(title);
   header.appendChild(remove);
   wrapper.appendChild(header);
@@ -885,28 +891,63 @@ function renderPublishDetail(publish) {
     return;
   }
 
-  const rows = [];
-  publish.pushed.forEach(p => rows.push(`<li class="publish-ok">✓ ${p.path}</li>`));
-  publish.failed.forEach(f => rows.push(`<li class="publish-fail">✕ ${f.path} — ${f.error}</li>`));
+  // Built with createElement/textContent rather than innerHTML - p.path
+  // and f.error can trace back to an uploaded file's original filename
+  // (uniqueFilename() preserves it verbatim), which is attacker-controlled
+  // input. Interpolating it into innerHTML would let a crafted filename
+  // like <img src=x onerror=...>.pdf execute as HTML/JS right here.
+  publishDetail.innerHTML = "";
+  const heading = document.createElement("strong");
+  heading.textContent = "GitHub publish:";
+  publishDetail.appendChild(heading);
 
-  publishDetail.innerHTML = `<strong>GitHub publish:</strong><ul>${rows.join("")}</ul>` +
-    (publish.failed.length
-      ? `<button type="button" id="retryPublishBtn" class="btn-secondary">Retry publish</button>
-         <button type="button" id="exportBundleBtn" class="btn-secondary">Export update bundle instead</button>`
-      : "");
+  const list = document.createElement("ul");
+  publish.pushed.forEach(p => {
+    const li = document.createElement("li");
+    li.className = "publish-ok";
+    li.textContent = `✓ ${p.path}`;
+    list.appendChild(li);
+  });
+  publish.failed.forEach(f => {
+    const li = document.createElement("li");
+    li.className = "publish-fail";
+    li.textContent = `✕ ${f.path} — ${f.error}`;
+    list.appendChild(li);
+  });
+  publishDetail.appendChild(list);
+
+  if (publish.failed.length) {
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.id = "retryPublishBtn";
+    retry.className = "btn-secondary";
+    retry.textContent = "Retry publish";
+    publishDetail.appendChild(retry);
+
+    const exportBtn = document.createElement("button");
+    exportBtn.type = "button";
+    exportBtn.id = "exportBundleBtn";
+    exportBtn.className = "btn-secondary";
+    exportBtn.textContent = "Export update bundle instead";
+    publishDetail.appendChild(exportBtn);
+  }
   publishDetail.hidden = false;
 
   const retryBtn = document.getElementById("retryPublishBtn");
-  if (retryBtn) retryBtn.addEventListener("click", retryPublish);
+  // Pass the exact paths that failed - the /publish endpoint otherwise
+  // falls back to a fixed 4-file list that never includes uploaded
+  // assets, so retrying a failed Assets/*.pdf push would silently skip
+  // it and report success.
+  if (retryBtn) retryBtn.addEventListener("click", () => retryPublish(publish.failed.map(f => f.path)));
   const exportBtn = document.getElementById("exportBundleBtn");
   if (exportBtn) exportBtn.addEventListener("click", exportBundle);
 }
 
-async function retryPublish() {
+async function retryPublish(paths) {
   const btn = document.getElementById("retryPublishBtn");
   if (btn) { btn.disabled = true; btn.textContent = "Retrying…"; }
   try {
-    const out = await DataLayer.republish();
+    const out = await DataLayer.republish(paths);
     if (!out.ok) {
       showStatus(out.error || "Retry failed.", "error");
       return;
