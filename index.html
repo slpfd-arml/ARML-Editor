@@ -154,12 +154,16 @@
         <h2>Search Tags</h2>
         <p class="hint">Never shown on the resource card - purely makes it findable when someone searches. Type a word or phrase and press Enter to add it; click a tag to remove it.</p>
 
-        <label>
-          <div class="tag-input" data-field="keywords">
-            <div class="tags"></div>
-            <input type="text" class="tag-entry" placeholder="Type and press Enter…">
-          </div>
-        </label>
+        <!-- Deliberately a <div>, not a <label>: a <label> wrapping this
+             would implicitly associate with the FIRST labelable descendant
+             in DOM order, which is a tag chip's remove <button> (since
+             .tags comes before .tag-entry) rather than the text input.
+             Every click anywhere else in here would then also silently
+             fire a synthetic click on that button, deleting an extra tag. -->
+        <div class="tag-input" data-field="keywords">
+          <div class="tags"></div>
+          <input type="text" class="tag-entry" placeholder="Type and press Enter…">
+        </div>
       </section>
 
       <section class="section" id="existingFilesSection" hidden>
