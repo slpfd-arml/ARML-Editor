@@ -223,7 +223,9 @@ function renderExistingFileRows() {
     remove.type = "button";
     remove.className = "file-remove";
     remove.textContent = "Remove";
-    remove.addEventListener("click", () => {
+    remove.addEventListener("click", e => {
+      // Same same-spot double-click reflow hazard as the tag chips above.
+      if (e.detail > 1) return;
       keptExistingItems.splice(i, 1);
       renderExistingFileRows();
       syncExistingFilesField();
@@ -258,7 +260,13 @@ document.querySelectorAll(".tag-input").forEach(wrapper => {
       remove.className = "tag-remove";
       remove.textContent = "×";
       remove.setAttribute("aria-label", `Remove ${val}`);
-      remove.addEventListener("click", () => {
+      remove.addEventListener("click", e => {
+        // Removing a tag reflows the wrapped chip row, so the next chip's
+        // remove button can slide into the screen spot this one just
+        // occupied. A double-click (or trackpad double-tap) then lands its
+        // second click on that new button, deleting an extra tag. detail>1
+        // marks the second+ click of such a same-spot click burst - skip it.
+        if (e.detail > 1) return;
         values.splice(i, 1);
         render();
       });
@@ -331,7 +339,9 @@ function renderFileRows() {
     remove.type = "button";
     remove.className = "file-remove";
     remove.textContent = "Remove";
-    remove.addEventListener("click", () => {
+    remove.addEventListener("click", e => {
+      // Same same-spot double-click reflow hazard as the tag chips above.
+      if (e.detail > 1) return;
       pickedFiles.splice(i, 1);
       renderFileRows();
     });
@@ -395,7 +405,9 @@ function renderLinkRows() {
     remove.type = "button";
     remove.className = "file-remove";
     remove.textContent = "Remove";
-    remove.addEventListener("click", () => {
+    remove.addEventListener("click", e => {
+      // Same same-spot double-click reflow hazard as the tag chips above.
+      if (e.detail > 1) return;
       pickedLinks.splice(i, 1);
       renderLinkRows();
     });
