@@ -182,12 +182,18 @@ function writeRowsToWorkbook(wb, rows) {
 const CORE_SHEET_NAMES = new Set(["Read Me", "Resource List", "Release of Information", "Screening Tools"]);
 const SUB_CONTACT_COLUMNS = [
   "Parent Resource", "Sub-Contact Name", "Category", "Audience", "Services / Purpose",
-  "Phone", "Email", "Website", "Location", "Hours / Availability", "Access Instructions",
+  "Phone", "Fax", "Email", "Website", "Location", "Hours / Availability", "Access Instructions",
   "Notes", "Source"
 ];
+// "audience", "source", and "access" are real workbook columns not
+// written by the "+ Add Sub-Contact" form - see server.js's identical
+// comment (KEEP IN SYNC) for the full explanation, including why
+// "access" (unlike the other two) is a deliberate product decision
+// rather than a dead-field cleanup: CAP-HC's real Access Instructions
+// data still renders exactly as before, it just isn't form-editable here.
 const SUB_CONTACT_KEY_TO_COLUMN = {
   name: "Sub-Contact Name", category: "Category", audience: "Audience", purpose: "Services / Purpose",
-  phone: "Phone", email: "Email", website: "Website", location: "Location",
+  phone: "Phone", fax: "Fax", email: "Email", website: "Website", location: "Location",
   hours: "Hours / Availability", access: "Access Instructions", notes: "Notes", source: "Source"
 };
 const SUB_CONTACT_COLUMN_TO_KEY = Object.fromEntries(
@@ -223,6 +229,7 @@ function readAllSubContacts(wb) {
         audience: String(row["Audience"] || "").trim(),
         purpose: String(row["Services / Purpose"] || "").trim(),
         phone: String(row["Phone"] || "").trim(),
+        fax: String(row["Fax"] || "").trim(),
         email: String(row["Email"] || "").trim(),
         website: String(row["Website"] || "").trim(),
         location: String(row["Location"] || "").trim(),
@@ -446,7 +453,9 @@ function rowFromBody(body, filesValue) {
     "Parent Organization/Agency": body.parent || "",
     "Organization Type": body.type || "",
     "Services Provided": body.services || "",
-    "Contact Person": body.contact || "",
+    // Contact Person is a retired column - see server.js's identical
+    // comment (KEEP IN SYNC).
+    "Contact Person": "",
     "Email Address": body.email || "",
     "Phone": body.phone || "",
     "Alternate Phone": body.altPhone || "",

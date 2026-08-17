@@ -27,7 +27,7 @@
      Non-GET requests    POST/PUT are actions, not documents.
    ============================================================ */
 
-const CACHE_VERSION = 'arml-editor-v1.2.0';
+const CACHE_VERSION = 'arml-editor-v1.3.0';
 
 /* The shell: everything needed to load the Editor UI itself. The
    vendored xlsx build is included on purpose - it used to load from

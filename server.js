@@ -176,7 +176,12 @@ function rowFromBody(body, filesValue) {
     "Parent Organization/Agency": body.parent || "",
     "Organization Type": body.type || "",
     "Services Provided": body.services || "",
-    "Contact Person": body.contact || "",
+    // Contact Person is a retired column - the app's card renderer never
+    // reads it (contactBlock() in ARML's app.js has no r.contact
+    // reference), so there's no form field for it and this always writes
+    // empty. Same "stop writing, let it clear out over time" treatment as
+    // Service Tags below.
+    "Contact Person": "",
     "Email Address": body.email || "",
     "Phone": body.phone || "",
     "Alternate Phone": body.altPhone || "",
@@ -269,12 +274,23 @@ function saveWorkbook(wb) {
 const CORE_SHEET_NAMES = new Set(["Read Me", "Resource List", "Release of Information", "Screening Tools"]);
 const SUB_CONTACT_COLUMNS = [
   "Parent Resource", "Sub-Contact Name", "Category", "Audience", "Services / Purpose",
-  "Phone", "Email", "Website", "Location", "Hours / Availability", "Access Instructions",
+  "Phone", "Fax", "Email", "Website", "Location", "Hours / Availability", "Access Instructions",
   "Notes", "Source"
 ];
+// "audience" and "source" were never rendered anywhere in ARML's app.js -
+// see the longer comment history in this repo. "access" IS rendered (an
+// "Access:" line in subContactsBlock()) and CAP-HC's real data uses it,
+// so unlike the other two this one is a deliberate product decision, not
+// a dead-field cleanup: it stays wired on the read/render side (CAP-HC's
+// existing Access Instructions keeps showing exactly as before), but has
+// no field in the "+ Add Sub-Contact" form going forward. All three are
+// kept here so this tool can still READ an existing sheet without
+// erroring, but re-saving a resource's sub-contacts through this tool
+// clears all three going forward, same as Contact Person above - not
+// preserved, since there's no form field to carry the old value through.
 const SUB_CONTACT_KEY_TO_COLUMN = {
   name: "Sub-Contact Name", category: "Category", audience: "Audience", purpose: "Services / Purpose",
-  phone: "Phone", email: "Email", website: "Website", location: "Location",
+  phone: "Phone", fax: "Fax", email: "Email", website: "Website", location: "Location",
   hours: "Hours / Availability", access: "Access Instructions", notes: "Notes", source: "Source"
 };
 const SUB_CONTACT_COLUMN_TO_KEY = Object.fromEntries(
@@ -313,6 +329,7 @@ function readAllSubContacts(wb) {
         audience: String(row["Audience"] || "").trim(),
         purpose: String(row["Services / Purpose"] || "").trim(),
         phone: String(row["Phone"] || "").trim(),
+        fax: String(row["Fax"] || "").trim(),
         email: String(row["Email"] || "").trim(),
         website: String(row["Website"] || "").trim(),
         location: String(row["Location"] || "").trim(),

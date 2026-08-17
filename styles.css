@@ -78,6 +78,20 @@ body {
   color: var(--accent-soft);
 }
 
+/* A lighter-weight heading for a sub-block living inside a .section
+   rather than warranting a whole boxed section of its own (e.g.
+   Related Contacts at the bottom of Contact Information). */
+.section h3 {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.subsection-divider {
+  border-top: 1px solid var(--border);
+  margin: 20px 0 16px;
+}
+
 label {
   display: block;
   margin-bottom: 12px;

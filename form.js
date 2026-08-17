@@ -163,7 +163,6 @@ function loadResourceIntoForm(resource) {
   document.querySelector('[name="broadCategory"]').value = resource.broadCategory;
   document.querySelector('[name="services"]').value = resource.services;
   document.querySelector('[name="notes"]').value = resource.notes;
-  document.querySelector('[name="contact"]').value = resource.contact;
   document.querySelector('[name="email"]').value = resource.email;
   document.querySelector('[name="phone"]').value = resource.phone;
   document.querySelector('[name="altPhone"]').value = resource.altPhone;
@@ -421,16 +420,14 @@ const addSubContactBtn = document.getElementById("addSubContactBtn");
 const SUB_CONTACT_FIELDS = [
   { key: "name", label: "Sub-Contact Name", required: true },
   { key: "category", label: "Category" },
-  { key: "audience", label: "Audience" },
   { key: "purpose", label: "Services / Purpose", multiline: true },
   { key: "phone", label: "Phone" },
+  { key: "fax", label: "Fax" },
   { key: "email", label: "Email", type: "email" },
   { key: "website", label: "Website", placeholder: "example.org" },
   { key: "location", label: "Location" },
   { key: "hours", label: "Hours / Availability" },
-  { key: "access", label: "Access Instructions", multiline: true },
-  { key: "notes", label: "Notes", multiline: true },
-  { key: "source", label: "Source" }
+  { key: "notes", label: "Notes", multiline: true }
 ];
 
 function addSubContactFieldset(data) {
