@@ -33,7 +33,7 @@ const GITHUB_REPO = "ARML";
 const GITHUB_BRANCH = "main";
 const WORKBOOK_PATH = "ARM-Builder/New_ARM_Library.xlsx";
 const API_HOST = "https://api.github.com";
-const EDITOR_VERSION = "1.3.0"; // keep in step with package.json's version by hand
+const EDITOR_VERSION = "1.3.2"; // keep in step with package.json's version by hand
 
 const VALID_CATEGORIES = [
   "Food & Basic Needs", "Housing & Shelter", "Health Care & Clinics",
@@ -115,15 +115,26 @@ async function githubRequest(pathPart, options = {}) {
   return res;
 }
 
+// Encodes each path SEGMENT separately (not the whole string, which would
+// turn "Assets/foo.pdf"'s own "/" into "%2F" and break the path). Without
+// this, an uploaded file named e.g. "Room #204 Flyer.pdf" has the "#"
+// parsed by fetch() as a URL fragment - everything from "#" onward is
+// silently dropped from the request, so GitHub receives a PUT to a
+// truncated path instead of the real one. "?" causes the same class of
+// truncation via the query-string delimiter.
+function encodeGitHubPath(filePath) {
+  return filePath.split("/").map(encodeURIComponent).join("/");
+}
+
 async function getFileContent(filePath) {
-  const res = await githubRequest(`/contents/${filePath}?ref=${GITHUB_BRANCH}`);
+  const res = await githubRequest(`/contents/${encodeGitHubPath(filePath)}?ref=${encodeURIComponent(GITHUB_BRANCH)}`);
   if (!res.ok) throw new Error(`Couldn't load ${filePath} from GitHub (status ${res.status}).`);
   const json = await res.json();
   return { sha: json.sha, base64: json.content.replace(/\n/g, "") };
 }
 
 async function putFileContent(filePath, base64Content, message, sha) {
-  const res = await githubRequest(`/contents/${filePath}`, {
+  const res = await githubRequest(`/contents/${encodeGitHubPath(filePath)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, content: base64Content, branch: GITHUB_BRANCH, sha })
@@ -166,8 +177,14 @@ function readRows(wb) {
 }
 
 function writeRowsToWorkbook(wb, rows) {
+  // KEEP IN SYNC with server.js's writeRows() - union of every row's keys,
+  // not just rows[0]'s: rowFromBody() always produces the same fixed 19
+  // keys, so if row 0 happens to be the one just rewritten by this save,
+  // taking its keys alone would silently drop any column beyond those 19
+  // (e.g. a legacy or hand-added Excel column) from the ENTIRE sheet, not
+  // just that row.
   const header = rows.length
-    ? Object.keys(rows[0])
+    ? Array.from(rows.reduce((keys, row) => { Object.keys(row).forEach(k => keys.add(k)); return keys; }, new Set()))
     : ["Resource Name", "Parent Organization/Agency", "Organization Type", "Services Provided",
        "Contact Person", "Email Address", "Phone", "Alternate Phone", "Fax", "Alternate Fax", "TTY",
        "Website", "Street Address", "Notes", "Hours", "Keywords", "Files", "Broad Category", "Service Tags"];

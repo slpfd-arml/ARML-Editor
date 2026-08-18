@@ -90,8 +90,12 @@ const DataLayer = (() => {
       const res = await fetch("/publish-status");
       return res.json();
     },
-    async republish() {
-      const res = await fetch("/publish", { method: "POST" });
+    async republish(paths) {
+      const res = await fetch("/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: paths || [] })
+      });
       const out = await res.json();
       return { ok: res.ok, ...out };
     },

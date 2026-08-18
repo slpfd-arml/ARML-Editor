@@ -429,6 +429,6 @@ than wait for the deadline.
 ## Version
 
 **Last updated:** August 2026
-**Version:** ARML Editor v1.3.0
+**Version:** ARML Editor v1.3.2
 **Hosting:** GitHub Pages
 **Status:** Ready for production

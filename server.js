@@ -13,7 +13,7 @@ const app = express();
 // with its own history. Bump this by hand following the same semver
 // logic ARML itself uses: patch = fixes, minor = new features, major =
 // a fundamental change to how the tool works.
-const EDITOR_VERSION = "1.3.0";
+const EDITOR_VERSION = "1.3.2";
 
 // Everything is served from this same Express app (this file, index.html,
 // form.js, styles.css) on one origin. That's deliberate: if index.html were
